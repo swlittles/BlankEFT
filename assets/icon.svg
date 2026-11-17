@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#262a30"/>
+      <stop offset="1" stop-color="#121417"/>
+    </linearGradient>
+    <linearGradient id="pin" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd76a"/>
+      <stop offset="1" stop-color="#e0a92e"/>
+    </linearGradient>
+  </defs>
+  <!-- tile -->
+  <rect x="8" y="8" width="240" height="240" rx="48" fill="url(#bg)"/>
+  <rect x="8" y="8" width="240" height="240" rx="48" fill="none" stroke="#c8b27d" stroke-width="8"/>
+  <!-- folded map -->
+  <path d="M44 78 L96 60 L160 80 L212 62 L212 192 L160 210 L96 190 L44 208 Z" fill="#1f4a4a"/>
+  <path d="M96 60 L96 190 M160 80 L160 210" stroke="#163636" stroke-width="6"/>
+  <path d="M44 78 L96 60 L160 80 L212 62 L212 192 L160 210 L96 190 L44 208 Z" fill="none" stroke="#c8b27d" stroke-width="6" stroke-linejoin="round"/>
+  <!-- route -->
+  <path d="M66 182 C 90 160, 104 168, 120 148 S 150 120, 170 128" fill="none" stroke="#f6e7bd" stroke-width="7" stroke-dasharray="12 10" stroke-linecap="round"/>
+  <circle cx="66" cy="182" r="10" fill="#4fb3ff" stroke="#121417" stroke-width="4"/>
+  <!-- quest pin -->
+  <path d="M170 44 C 146 44, 132 62, 132 80 C 132 106, 170 140, 170 140 C 170 140, 208 106, 208 80 C 208 62, 194 44, 170 44 Z" fill="url(#pin)" stroke="#121417" stroke-width="6"/>
+  <rect x="158" y="66" width="24" height="24" transform="rotate(45 170 78)" fill="#121417"/>
+</svg>

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://assets.tarkov.dev; connect-src 'self'; object-src 'none'; base-uri 'none'"
+    />
+    <title>Tarkov Quest Map</title>
+    <link rel="stylesheet" href="../../node_modules/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header id="topbar">
+      <div class="brand">TARKOV<span>QUEST MAP</span></div>
+      <div class="status-pill" id="raid-status" title="Detected from the game's log files">Waiting for logs…</div>
+      <label class="ctl" title="Which game mode's quest progress is shown. Each mode tracks its own progress.">Mode
+        <select id="mode-select"></select>
+      </label>
+      <span class="status-pill prestige" id="prestige-pill" title="Prestige level for this mode (change it in Settings)"></span>
+      <button class="status-pill warn" id="mode-warn" hidden></button>
+      <div class="spacer"></div>
+      <label class="ctl">Map
+        <select id="map-select"></select>
+      </label>
+      <label class="ctl" id="floor-ctl" hidden>Floor
+        <select id="floor-select"></select>
+      </label>
+      <div class="seg" id="filter-seg" title="Which quests get markers">
+        <button data-filter="active">Active</button>
+        <button data-filter="available">+ Available</button>
+        <button data-filter="all">All</button>
+        <button data-filter="plan" title="Only the quests in your raid plan, with the route">Plan</button>
+      </div>
+      <button class="toggle" id="extracts-toggle" title="Show extracts">Extracts</button>
+      <button class="toggle" id="spawns-toggle" title="Show PMC spawn points">Spawns</button>
+      <button class="toggle" id="pin-toggle" title="Keep this window on top of the game">Pin</button>
+    </header>
+
+    <div id="body">
+      <div id="map-wrap">
+        <div id="map"></div>
+        <div id="map-empty" hidden></div>
+        <div id="position-chip" hidden></div>
+      </div>
+      <aside id="sidebar">
+        <nav class="tabs">
+          <button data-tab="here" class="active">This map</button>
+          <button data-tab="plan">Raid plan</button>
+          <button data-tab="quests">All quests</button>
+          <button data-tab="settings">Settings</button>
+        </nav>
+        <section class="tab" id="tab-here"></section>
+        <section class="tab" id="tab-plan" hidden></section>
+        <section class="tab" id="tab-quests" hidden>
+          <div class="quest-tools">
+            <input id="quest-search" type="search" placeholder="Search quests or traders…" />
+            <select id="quest-status-filter">
+              <option value="">All statuses</option>
+              <option value="started">Active</option>
+              <option value="available">Available</option>
+              <option value="completed">Completed</option>
+              <option value="locked">Locked</option>
+              <option value="failed">Failed</option>
+            </select>
+          </div>
+          <div id="quest-counts" class="muted small"></div>
+          <div id="quest-list"></div>
+        </section>
+        <section class="tab" id="tab-settings" hidden></section>
+      </aside>
+    </div>
+    <div id="toasts"></div>
+
+    <script src="../../node_modules/leaflet/dist/leaflet.js"></script>
+    <script src="planner.js"></script>
+    <script src="mapView.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

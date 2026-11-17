@@ -1,0 +1,22 @@
+{
+  "name": "tarkov-quest-map",
+  "productName": "Tarkov Quest Map",
+  "version": "0.1.0",
+  "description": "Windows companion that reads Escape from Tarkov logs to track quests, detect the current map and show quest locations.",
+  "main": "src/main/main.js",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "scan": "node scripts/scan-logs.js",
+    "package": "electron-packager . TarkovQuestMap --icon=assets/icon.ico --platform=win32 --arch=x64 --out=release --overwrite --prune=true --ignore=^/test --ignore=^/release --ignore=^/scripts"
+  },
+  "dependencies": {
+    "leaflet": "^1.9.4"
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "electron": "^45.3.3"
+  }
+}
