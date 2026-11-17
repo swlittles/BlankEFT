@@ -63,7 +63,7 @@ class TarkovData {
   async load(dataMode, { force = false } = {}) {
     if (!force && this.models.has(dataMode)) return this.models.get(dataMode);
     const get = (p) => this.cachedJson(`${JSON_BASE}/${dataMode}/${p}`, `${dataMode}_${p}.json`, { force });
-    const [tasks, tasksEn, maps, mapsEn, traders, tradersEn, items, itemsEn, mapsConfig] = await Promise.all([
+    const [tasks, tasksEn, maps, mapsEn, traders, tradersEn, items, itemsEn, barters, mapsConfig] = await Promise.all([
       get('tasks'),
       get('tasks_en'),
       get('maps'),
@@ -72,6 +72,7 @@ class TarkovData {
       get('traders_en'),
       get('items'),
       get('items_en'),
+      get('barters'),
       this.mapsConfig(force),
     ]);
     const model = buildModel({
@@ -84,6 +85,7 @@ class TarkovData {
       tradersEn: tradersEn.json,
       items: items.json,
       itemsEn: itemsEn.json,
+      barters: barters.json,
       mapsConfig,
     });
     model.fetchedAt = Math.min(tasks.fetchedAt, maps.fetchedAt);
@@ -126,7 +128,7 @@ class TarkovData {
   }
 }
 
-function buildModel({ dataMode, tasks, tasksEn, maps, mapsEn, traders, tradersEn, items: itemsJson, itemsEn, mapsConfig }) {
+function buildModel({ dataMode, tasks, tasksEn, maps, mapsEn, traders, tradersEn, items: itemsJson, itemsEn, barters, mapsConfig }) {
   const tTask = (k) => tasksEn?.data?.[k] ?? k;
   const tMap = (k) => mapsEn?.data?.[k] ?? k;
   const tTrader = (k) => tradersEn?.data?.[k] ?? k;
@@ -160,26 +162,92 @@ function buildModel({ dataMode, tasks, tasksEn, maps, mapsEn, traders, tradersEn
     traderById[tr.id] = { id: tr.id, name: tTrader(tr.name), normalizedName: tr.normalizedName, imageLink: tr.imageLink || null };
   }
 
+  // Some map variants (Ground Zero 21+, Night Factory) leave extract factions blank; borrow them by extract id.
+  const factionById = {};
+  for (const m of Object.values(maps.data.maps)) for (const e of m.extracts || []) if (e.faction) factionById[e.name] = e.faction;
+
+  // What kind of extract it is, from its internal id and English name.
+  const extractKinds = (raw, name) => {
+    const s = `${raw} ${name}`;
+    const kinds = [];
+    if (/_secret_/i.test(raw)) kinds.push('secret');
+    if (/\(flare\)/i.test(name)) kinds.push('flare');
+    if (/co-?op/i.test(s)) kinds.push('coop');
+    if (/v-ex/i.test(name)) kinds.push('vehicle');
+    if (/train/i.test(s)) kinds.push('train');
+    if (/alpinist|cliff descent/i.test(s)) kinds.push('cliff');
+    if (/elevator/i.test(name)) kinds.push('elevator');
+    return kinds;
+  };
+
   const mapList = Object.values(maps.data.maps).map((m) => ({
     id: m.id,
     name: tMap(m.name),
     normalizedName: m.normalizedName,
     nameId: m.nameId,
     scenePath: m.scenePath,
+    wiki: m.wiki || null,
     extracts: (m.extracts || []).map((e) => ({
       name: tMap(e.name),
-      faction: e.faction,
+      faction: e.faction || factionById[e.name] || 'shared',
+      kinds: extractKinds(e.name, tMap(e.name)),
       position: e.position,
       outline: e.outline,
       top: e.top,
       bottom: e.bottom,
+      // tarkov.dev links every extract on a map to the same switch, so switch requirements
+      // aren't trustworthy and are left out.
+      switches: [],
+      // car extracts: pay to leave
+      payment: e.transferItem?.item ? { id: ref(e.transferItem.item), count: e.transferItem.count || 1 } : null,
     })),
     transits: (m.transits || []).map((e) => ({ name: tMap(e.description), position: e.position, top: e.top, bottom: e.bottom })),
+    // Locked doors and car trunks, and the key that opens each.
+    locks: (m.locks || [])
+      .filter((l) => l.key && l.position)
+      .map((l) => ({ type: l.lockType || 'door', key: ref(l.key), needsPower: !!l.needsPower, position: l.position, top: l.top, bottom: l.bottom })),
     pmcSpawns: (m.spawns || [])
       .filter((sp) => sp.sides?.includes('pmc') && sp.categories?.includes('player'))
       .map((sp) => ({ position: sp.position })),
   }));
   const mapById = Object.fromEntries(mapList.map((m) => [m.id, m]));
+
+  // Where to get each key that opens something on a map (trader, barter, flea).
+  const keyIds = new Set(mapList.flatMap((m) => m.locks.map((l) => l.key)));
+  const bartersFor = {};
+  for (const b of barters?.data || []) {
+    const id = b.offeredItem?.item;
+    if (keyIds.has(id)) (bartersFor[id] ||= []).push(b);
+  }
+  for (const id of keyIds) {
+    const it = allItems[id];
+    const sources = [];
+    for (const b of it?.buyFromTrader || []) {
+      sources.push({ kind: 'trader', trader: traderById[b.trader]?.name || b.trader, level: b.minTraderLevel || 1, taskUnlock: b.taskUnlock || null, price: b.price, currency: b.currency });
+    }
+    for (const b of bartersFor[id] || []) {
+      sources.push({ kind: 'barter', trader: traderById[b.trader]?.name || b.trader, level: b.minTraderLevel || 1, taskUnlock: b.taskUnlock || null });
+    }
+    const flea = it?.avg24hPrice || it?.lastLowPrice;
+    if (it && !it.types?.includes('noFlea') && flea) sources.push({ kind: 'flea', price: flea });
+    if (itemRefs[id]) itemRefs[id].sources = sources;
+  }
+
+  // Trader offers and barters that a quest unlocks, from both the quest rewards and the item data.
+  const unlocksByTask = {};
+  const addUnlock = (taskId, itemId, traderId, level, kind) => {
+    if (!taskId || !itemId) return;
+    const list = (unlocksByTask[taskId] ||= []);
+    if (list.some((u) => u.id === itemId && u.kind === kind)) return;
+    list.push({ id: ref(itemId), trader: traderById[traderId]?.name || traderId || '', level: level || 1, kind });
+  };
+  for (const t of Object.values(tasks.data.tasks)) {
+    for (const u of t.finishRewards?.offerUnlock || []) addUnlock(t.id, u.item, u.trader, u.level, 'buy');
+  }
+  for (const it of Object.values(allItems)) {
+    for (const b of it.buyFromTrader || []) if (b.taskUnlock) addUnlock(b.taskUnlock, it.id, b.trader, b.minTraderLevel, 'buy');
+  }
+  for (const b of barters?.data || []) if (b.taskUnlock) addUnlock(b.taskUnlock, b.offeredItem?.item, b.trader, b.minTraderLevel, 'barter');
 
   const zone = (z) => ({ id: z.id, map: z.map, position: z.position, outline: z.outline, top: z.top, bottom: z.bottom });
 
@@ -197,6 +265,7 @@ function buildModel({ dataMode, tasks, tasksEn, maps, mapsEn, traders, tradersEn
     taskRequirements: (t.taskRequirements || []).map((r) => ({ task: r.task, status: r.status || [] })),
     neededKeys: (t.neededKeys || []).map((nk) => ({ map: nk.map, keys: refList(nk.keys) })),
     image: t.taskImageLink || null,
+    unlocks: unlocksByTask[t.id] || [],
     rewards: {
       items: (t.finishRewards?.items || []).map((r) => ({ id: ref(r.item), count: r.count })).filter((r) => r.id),
       standing: (t.finishRewards?.traderStanding || []).map((r) => ({ trader: traderById[r.trader]?.name || r.trader, standing: r.standing })),
@@ -225,6 +294,8 @@ function buildModel({ dataMode, tasks, tasksEn, maps, mapsEn, traders, tradersEn
             }
           : null,
         foundInRaid: !!o.foundInRaid,
+        // "Complete quest X" objectives link quests together like prerequisites do
+        task: o.type === 'taskStatus' ? o.task || null : null,
         items: refList(o.items),
         markerItem: o.markerItem ? ref(o.markerItem) : null,
         useAny: refList(o.useAny),

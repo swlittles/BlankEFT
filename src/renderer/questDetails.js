@@ -1,5 +1,5 @@
 'use strict';
-/* global S, escapeHtml, taskState, statusChip, markComplete */
+/* global S, escapeHtml, taskState, statusChip, markComplete, unlockInfo, unlockBadges */
 // "Details" panel for a quest: the in-game task picture, quest items, items to hand over, keys and rewards.
 
 const OBJ_ITEM_LABEL = {
@@ -49,6 +49,28 @@ function objectiveHtml(o) {
   </li>`;
 }
 
+function unlockTile(u) {
+  return itemTile(u.id).replace('</span>', `</span><span class="tile-sub">${escapeHtml(u.trader)} LL${u.level}${u.kind === 'barter' ? ' · barter' : ''}</span>`);
+}
+
+function unlocksHtml(t) {
+  const u = unlockInfo(t.id);
+  let html = '';
+  if (u.direct.length) html += `<h3>🔓 Unlocks at traders</h3><div class="tiles">${u.direct.map(unlockTile).join('')}</div>`;
+  if (u.later.length) {
+    const items = u.later
+      .slice(0, 15)
+      .map(
+        (l) => `<li><a href="#" data-task="${l.task.id}">${escapeHtml(l.task.name)}</a> <span class="muted small">${escapeHtml(l.task.trader.name)} · ${l.steps} quest${l.steps > 1 ? 's' : ''} later</span>
+          <div class="tiles small-tiles">${l.task.unlocks.slice(0, 6).map(unlockTile).join('')}${l.task.unlocks.length > 6 ? `<div class="tile more">+${l.task.unlocks.length - 6} more</div>` : ''}</div></li>`
+      )
+      .join('');
+    html += `<h3>⤳ Leads to quests that unlock items</h3><ul class="later-unlocks">${items}</ul>`;
+    if (u.later.length > 15) html += `<p class="muted small">…and ${u.later.length - 15} more further down the chain.</p>`;
+  }
+  return html;
+}
+
 function openQuestDetails(taskId) {
   const t = S.taskById.get(taskId);
   if (!t) return;
@@ -61,7 +83,7 @@ function openQuestDetails(taskId) {
   el.innerHTML = `<div class="modal-card" role="dialog" aria-label="${escapeHtml(t.name)}">
     <header>
       <div>
-        <h2>${escapeHtml(t.name)} ${t.kappaRequired ? '<span class="tag" title="Required for Kappa">Kappa</span>' : ''}${t.lightkeeperRequired ? ' <span class="tag">Lightkeeper</span>' : ''}</h2>
+        <h2>${escapeHtml(t.name)} ${t.kappaRequired ? '<span class="tag" title="Required for Kappa">Kappa</span>' : ''}${t.lightkeeperRequired ? ' <span class="tag">Lightkeeper</span>' : ''} ${unlockBadges(t)}</h2>
         <div class="muted">${escapeHtml(t.trader.name)} · level ${t.minPlayerLevel}${t.mapId ? ` · ${escapeHtml(S.mapById.get(t.mapId)?.name || '')}` : ''}${t.factionName && t.factionName !== 'Any' ? ` · ${escapeHtml(t.factionName)} only` : ''} ${statusChip(st)}</div>
       </div>
       <button class="close" data-close title="Close (Esc)">✕</button>
@@ -80,7 +102,7 @@ function openQuestDetails(taskId) {
       ]
         .filter(Boolean)
         .join(' · ')}</p>
-      ${r.offerUnlock.length ? `<div class="obj-label">Unlocks for purchase</div><div class="tiles">${r.offerUnlock.map((u) => itemTile(u.id)).join('')}</div><p class="muted small">${r.offerUnlock.map((u) => `${escapeHtml(u.trader)} LL${u.level}`).join(', ')}</p>` : ''}
+      ${unlocksHtml(t)}
       ${prereqs.length ? `<h3>Comes after</h3><p class="small">${prereqs.map((p) => `<a href="#" data-task="${p.id}">${escapeHtml(p.name)}</a>`).join(', ')}</p>` : ''}
     </div>
     <footer>

@@ -354,7 +354,7 @@ function registerIpc() {
   });
 
   ipcMain.handle('settings:set', (_e, patch) => {
-    const allowed = ['viewMode', 'markerFilter', 'showExtracts', 'showSpawns', 'followRaidMap', 'alwaysOnTop', 'questSort', 'sidebarCollapsed'];
+    const allowed = ['viewMode', 'markerFilter', 'showExtracts', 'showSpawns', 'followRaidMap', 'alwaysOnTop', 'questSort', 'sidebarCollapsed', 'showLocks', 'extractFactions'];
     const clean = {};
     for (const k of allowed) if (k in patch) clean[k] = patch[k];
     store.setSettings(clean);

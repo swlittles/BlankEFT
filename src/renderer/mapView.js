@@ -148,6 +148,7 @@ class MapView {
     this.markerLayer = L.layerGroup().addTo(map);
     this.extractLayer = L.layerGroup().addTo(map);
     this.spawnLayer = L.layerGroup().addTo(map);
+    this.lockLayer = L.layerGroup().addTo(map);
     this.routeLayer = L.layerGroup().addTo(map);
     this.positionLayer = L.layerGroup().addTo(map);
 
@@ -240,7 +241,7 @@ class MapView {
   }
 
   refreshFloorDimming() {
-    for (const m of this.extractMarkers || []) m.getElement()?.classList.toggle("off-floor", (m.options.floor || null) !== this.floor);
+    for (const m of [...(this.extractMarkers || []), ...(this.lockMarkers || [])]) m.getElement()?.classList.toggle('off-floor', (m.options.floor || null) !== this.floor);
     for (const markers of this.markerIndex.values()) {
       for (const m of markers) {
         const off = (m.options.floor || null) !== this.floor;
@@ -287,27 +288,84 @@ class MapView {
     this.refreshFloorDimming();
   }
 
-  setExtracts(extracts, show) {
+  /**
+   * Extracts, labelled PMC / SCAV / SHARED. factions: which to show.
+   * Hover shows requirements and the extract area; click opens handlers.extractPopup(ex).
+   */
+  setExtracts(extracts, show, factions = ['pmc', 'scav', 'shared']) {
     if (!this.map) return;
     this.extractLayer.clearLayers();
     this.extractMarkers = [];
     if (!show) return;
+    const TAG = { pmc: 'PMC', scav: 'SCAV', shared: 'PMC+SCAV' };
+    const KIND_ICON = window.EXTRACT_KINDS || {};
     for (const ex of extracts) {
       if (!ex.position) continue;
       const faction = ex.faction || 'shared';
+      if (!factions.includes(faction)) continue;
+      const area = ex.outline?.length
+        ? L.polygon(
+            ex.outline.map((v) => [v.z, v.x]),
+            { className: `extract-area faction-${faction}`, weight: 1.5, fillOpacity: 0.18, interactive: false }
+          )
+        : null;
+      const needs = [];
+      if (ex.switches?.length) needs.push(`needs ${ex.switches.map((s) => s.name).join(', ')}`);
+      if (ex.payment) needs.push('costs money');
       const m = L.marker(pos(ex.position), {
         icon: L.divIcon({
           className: `extract-marker faction-${faction}`,
-          html: `<span class="ex-dot"></span><span class="ex-name">${escapeHtml(ex.name)}</span>`,
+          html: `<span class="ex-dot"></span><span class="ex-name">${(ex.kinds || []).map((k) => `<span class="ex-kind" title="${escapeHtml(KIND_ICON[k]?.label || k)}">${KIND_ICON[k]?.icon || ''}</span>`).join('')}${escapeHtml(ex.name)}<span class="ex-tag">${TAG[faction]}</span>${needs.length ? '<span class="ex-req">!</span>' : ''}</span>`,
           iconSize: [12, 12],
           iconAnchor: [6, 6],
         }),
         keyboard: false,
+        riseOnHover: true,
         floor: this.floorFor(ex),
       });
       this.extractMarkers.push(m);
-      m.bindTooltip(`${escapeHtml(ex.name)} <span class="tt-sub">(${faction} extract)</span>`, { direction: 'top', offset: [0, -6] })
-        .addTo(this.extractLayer);
+      m.bindTooltip(
+        `<b>${escapeHtml(ex.name)}</b><br><span class="tt-sub">${(ex.kinds || []).map((k) => `${KIND_ICON[k]?.icon || ''} ${escapeHtml(KIND_ICON[k]?.label || k)} · `).join('')}${TAG[faction]} extract${needs.length ? ` · ${escapeHtml(needs.join(' · '))}` : ''} · click for details</span>`,
+        { direction: 'top', offset: [0, -6], className: 'quest-tooltip' }
+      );
+      if (area) {
+        m.on('mouseover', () => area.addTo(this.extractLayer));
+        m.on('mouseout', () => area.remove());
+      }
+      m.bindPopup(() => this.handlers.extractPopup(ex), { maxWidth: 320, minWidth: 240, className: 'quest-popup' });
+      m.addTo(this.extractLayer);
+    }
+    this.refreshFloorDimming();
+  }
+
+  /**
+   * Locked doors / trunks. entries: [{ lock, key, questNames: [] }]
+   * Hover shows the key; click opens handlers.lockPopup(entry).
+   */
+  setLocks(entries, show) {
+    if (!this.map) return;
+    this.lockLayer.clearLayers();
+    this.lockMarkers = [];
+    if (!show) return;
+    for (const e of entries) {
+      const floor = this.floorFor(e.lock);
+      const quest = e.questNames.length ? ' quest-key' : '';
+      const m = L.marker(pos(e.lock.position), {
+        icon: L.divIcon({
+          className: `lock-marker lock-${e.lock.type}${quest}`,
+          html: '<span>🔑</span>',
+          iconSize: [20, 20],
+          iconAnchor: [10, 10],
+          popupAnchor: [0, -10],
+        }),
+        riseOnHover: true,
+        floor,
+      });
+      const tip = `<b>${escapeHtml(e.key?.name || 'Unknown key')}</b><br><span class="tt-sub">${e.lock.type === 'trunk' ? 'Car trunk' : 'Locked door'}${e.lock.needsPower ? ' · needs power' : ''}${floor ? ` · ${escapeHtml(floor)}` : ''}${e.questNames.length ? ' · needed for a quest' : ''}</span>`;
+      m.bindTooltip(tip, { direction: 'top', offset: [0, -10], className: 'quest-tooltip' });
+      m.bindPopup(() => this.handlers.lockPopup({ ...e, floor }), { maxWidth: 320, minWidth: 240, className: 'quest-popup' });
+      m.addTo(this.lockLayer);
+      this.lockMarkers.push(m);
     }
     this.refreshFloorDimming();
   }

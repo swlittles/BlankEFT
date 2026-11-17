@@ -19,6 +19,8 @@ const S = {
 const mapView = new MapView($('#map'), {
   popup: buildPopup,
   error: (msg) => toast(msg, 'error'),
+  lockPopup: buildLockPopup,
+  extractPopup: buildExtractPopup,
   spawnClick: (sp) => {
     savePlan({ start: { ...sp.position, label: 'Chosen PMC spawn' } });
     toast('Route now starts at that spawn');
@@ -177,6 +179,7 @@ function renderTopbar() {
   for (const b of document.querySelectorAll('#filter-seg button')) b.classList.toggle('active', b.dataset.filter === st.settings.markerFilter);
   $('#extracts-toggle').classList.toggle('active', !!st.settings.showExtracts);
   $('#spawns-toggle').classList.toggle('active', !!st.settings.showSpawns);
+  $('#locks-toggle').classList.toggle('active', !!st.settings.showLocks);
   $('#pin-toggle').classList.toggle('active', !!st.settings.alwaysOnTop);
   applySidebar();
 
@@ -207,8 +210,12 @@ function renderFloors() {
 function renderMarkers() {
   if (!S.mapId) return;
   mapView.setQuestMarkers(markerEntries(S.mapId));
-  mapView.setExtracts(S.mapById.get(S.mapId)?.extracts || [], S.state.settings.showExtracts);
+  const factions = S.state.settings.extractFactions || ['pmc', 'scav', 'shared'];
+  mapView.setExtracts(S.mapById.get(S.mapId)?.extracts || [], S.state.settings.showExtracts, factions);
+  $('#extract-legend').hidden = !S.state.settings.showExtracts;
+  for (const cb of document.querySelectorAll('#extract-legend [data-faction]')) cb.checked = factions.includes(cb.dataset.faction);
   mapView.setSpawns(S.mapById.get(S.mapId)?.pmcSpawns || [], !!S.state.settings.showSpawns);
+  mapView.setLocks(lockEntries(S.mapId), !!S.state.settings.showLocks);
   mapView.setRoute(S.state.settings.markerFilter === 'plan' ? currentRoute() : null);
 }
 
@@ -256,6 +263,8 @@ function renderHere() {
           <button class="link qc-name" data-act="focus" ${hasMarkers ? '' : 'disabled title="No map markers for this quest"'}>${escapeHtml(t.name)}</button>
           <span class="trader">${escapeHtml(t.trader.name)}</span>
         </div>
+        <div class="qc-unlocks">${unlockBadges(t)}
+        </div>
         <ul class="objectives">${objs
           .map((o) => {
             const located = o.zones.some((z) => z.map === S.mapId) || o.possibleLocations.some((l) => l.map === S.mapId);
@@ -278,6 +287,75 @@ function renderHere() {
 
 const STATUS_ORDER = { started: 0, available: 1, failed: 2, locked: 3 };
 
+// ------------------------------------------------------------------ item unlocks
+// "Direct": finishing this quest lets you buy/barter items from a trader.
+// "Later": quests further down this chain (not yet completed) unlock items.
+const UNL = { data: null, states: null, children: null, memo: new Map() };
+
+function unlockInfo(taskId) {
+  if (UNL.data !== S.data) {
+    UNL.data = S.data;
+    UNL.children = new Map();
+    const link = (parent, child) => {
+      if (!UNL.children.has(parent)) UNL.children.set(parent, []);
+      if (!UNL.children.get(parent).includes(child)) UNL.children.get(parent).push(child);
+    };
+    for (const t of S.data.tasks) {
+      for (const r of t.taskRequirements) link(r.task, t.id);
+      for (const o of t.objectives) if (o.task) link(o.task, t.id);
+    }
+    UNL.memo.clear();
+  }
+  if (UNL.states !== S.state.taskStates) {
+    UNL.states = S.state.taskStates;
+    UNL.memo.clear();
+  }
+  if (UNL.memo.has(taskId)) return UNL.memo.get(taskId);
+  const t = S.taskById.get(taskId);
+  const later = [];
+  const seen = new Set([taskId]);
+  let frontier = [taskId];
+  for (let steps = 1; frontier.length && steps < 40; steps++) {
+    const next = [];
+    for (const id of frontier) {
+      for (const child of UNL.children.get(id) || []) {
+        if (seen.has(child)) continue;
+        seen.add(child);
+        next.push(child);
+        const ct = S.taskById.get(child);
+        if (ct?.unlocks?.length && taskState(child).status !== 'completed') later.push({ task: ct, steps });
+      }
+    }
+    frontier = next;
+  }
+  const info = { direct: t?.unlocks || [], later, laterItems: new Set(later.flatMap((l) => l.task.unlocks.map((u) => u.id))).size };
+  UNL.memo.set(taskId, info);
+  return info;
+}
+
+function unlockLine(u) {
+  return `${S.data.items?.[u.id]?.name || u.id} (${u.trader} LL${u.level}${u.kind === 'barter' ? ' barter' : ''})`;
+}
+
+function unlockBadges(t) {
+  const u = unlockInfo(t.id);
+  let html = '';
+  if (u.direct.length) {
+    const done = taskState(t.id).status === 'completed';
+    const tip = `${done ? 'Already unlocked' : 'Completing this unlocks'}:\n${u.direct.map(unlockLine).join('\n')}`;
+    html += `<span class="ub direct${done ? ' done' : ''}" title="${escapeHtml(tip)}">🔓 ${done ? 'Unlocked' : 'Unlocks'} ${u.direct.length}</span>`;
+  }
+  if (u.later.length) {
+    const lines = u.later
+      .slice(0, 12)
+      .map((l) => `${l.task.name} (${l.steps} step${l.steps > 1 ? 's' : ''} later): ${l.task.unlocks.length} item${l.task.unlocks.length > 1 ? 's' : ''}`)
+      .join('\n');
+    const tip = `Leads to ${u.later.length} quest${u.later.length > 1 ? 's' : ''} that unlock ${u.laterItems} item${u.laterItems > 1 ? 's' : ''}:\n${lines}${u.later.length > 12 ? '\n…' : ''}`;
+    html += `<span class="ub later" title="${escapeHtml(tip)}">⤳ ${u.later.length} later</span>`;
+  }
+  return html ? `<span class="ubs">${html}</span>` : '';
+}
+
 function completedWhen(st) {
   if (st.status !== 'completed') return '';
   if (!st.time) return ' · <span class="when">completed (inferred, no date)</span>';
@@ -291,12 +369,19 @@ function renderQuestList() {
   if (!S.data) return;
   const q = $('#quest-search').value.trim().toLowerCase();
   const sf = $('#quest-status-filter').value;
+  const uf = $('#quest-unlock-filter').value;
   const counts = {};
   const rows = [];
   for (const t of S.data.tasks) {
     const st = taskState(t.id);
     counts[st.status] = (counts[st.status] || 0) + 1;
     if (sf && st.status !== sf) continue;
+    if (uf) {
+      const u = unlockInfo(t.id);
+      if (uf === 'direct' && !u.direct.length) continue;
+      if (uf === 'later' && !u.later.length) continue;
+      if (uf === 'either' && !u.direct.length && !u.later.length) continue;
+    }
     if (q && !t.name.toLowerCase().includes(q) && !t.trader.name.toLowerCase().includes(q)) continue;
     rows.push([t, st]);
   }
@@ -321,7 +406,7 @@ function renderQuestList() {
       const mapName = t.mapId ? S.mapById.get(t.mapId)?.name : '';
       return `<div class="quest-row" data-task="${t.id}">
         <div class="qr-main">
-          <div class="qr-name"><a href="#" data-details title="Show pictures, items and rewards">${escapeHtml(t.name)}</a>${t.kappaRequired ? ' <span class="tag" title="Required for Kappa">K</span>' : ''}</div>
+          <div class="qr-name"><a href="#" data-details title="Show pictures, items and rewards">${escapeHtml(t.name)}</a>${t.kappaRequired ? ' <span class="tag" title="Required for Kappa">K</span>' : ''} ${unlockBadges(t)}</div>
           <div class="qr-sub muted small">${escapeHtml(t.trader.name)} · lvl ${t.minPlayerLevel}${mapName ? ` · ${escapeHtml(mapName)}` : ''}${completedWhen(st)}</div>
         </div>
         ${statusChip(st)}
@@ -483,7 +568,7 @@ function renderPlan() {
   const pick = (list) =>
     list
       .sort((a, b) => a.name.localeCompare(b.name))
-      .map((t) => `<label class="pick"><input type="checkbox" data-plan-task="${t.id}" ${plan.tasks.includes(t.id) ? 'checked' : ''}/> <span>${escapeHtml(t.name)}</span><button class="icon-btn" data-details-task="${t.id}" title="Details and pictures">🖼</button><span class="trader">${escapeHtml(t.trader.name)}</span></label>`)
+      .map((t) => `<label class="pick"><input type="checkbox" data-plan-task="${t.id}" ${plan.tasks.includes(t.id) ? 'checked' : ''}/> <span>${escapeHtml(t.name)}</span><button class="icon-btn" data-details-task="${t.id}" title="Details and pictures">🖼</button>${unlockBadges(t)}<span class="trader">${escapeHtml(t.trader.name)}</span></label>`)
       .join('') || '<p class="muted small">None on this map.</p>';
   const extracts = map.extracts.filter((e) => e.faction !== 'scav');
   const pos = S.state.position && S.state.position.map === S.mapId ? S.state.position : null;
@@ -586,6 +671,7 @@ function buildPopup(e) {
   el.innerHTML = `
     <div class="pp-head"><strong>${escapeHtml(e.task.name)}</strong> ${statusChip(st)}</div>
     <div class="muted small">${escapeHtml(e.task.trader.name)} · lvl ${e.task.minPlayerLevel}${e.floor ? ` · <b>${escapeHtml(e.floor)}</b>` : ''}</div>
+    <div class="pp-unlocks">${unlockBadges(e.task)}</div>
     <p class="pp-obj">${escapeHtml(e.objective.description)}</p>
     ${e.questItem ? `<div class="pp-item">${e.questItem.iconLink ? `<img src="${escapeHtml(e.questItem.iconLink)}" alt="">` : ''}<span>${escapeHtml(e.questItem.name)}</span></div>` : ''}
     <div class="pp-actions">
@@ -619,6 +705,108 @@ async function markComplete(taskId) {
     },
     ms: 10000,
   });
+}
+
+// ------------------------------------------------------------------ key rooms
+/** Which of your not-yet-completed quests need each key (from the quest's needed/required keys). */
+function questsByKey() {
+  if (S.keyQuestsFor === S.state.taskStates && S.keyQuests) return S.keyQuests;
+  const map = new Map();
+  const add = (keyId, t) => {
+    if (!map.has(keyId)) map.set(keyId, new Set());
+    map.get(keyId).add(t);
+  };
+  for (const t of S.data.tasks) {
+    if (taskState(t.id).status === 'completed') continue;
+    for (const nk of t.neededKeys || []) for (const k of nk.keys) add(k, t);
+    for (const o of t.objectives) for (const alts of o.requiredKeys || []) for (const k of alts) add(k, t);
+  }
+  S.keyQuests = map;
+  S.keyQuestsFor = S.state.taskStates;
+  return map;
+}
+
+function lockEntries(mapId) {
+  const byKey = questsByKey();
+  return (S.mapById.get(mapId)?.locks || []).map((lock) => ({
+    lock,
+    key: S.data.items?.[lock.key] || null,
+    quests: [...(byKey.get(lock.key) || [])],
+    questNames: [...(byKey.get(lock.key) || [])].map((t) => t.name),
+  }));
+}
+
+function keySourceText(s) {
+  const cur = { RUB: '₽', USD: '$', EUR: '€' }[s.currency] || (s.kind === 'flea' ? '₽' : '');
+  const price = s.price ? ` ${cur}${Math.round(s.price).toLocaleString()}` : '';
+  if (s.kind === 'flea') return `Flea market${price}`;
+  const quest = s.taskUnlock ? ` (after ${S.taskById.get(s.taskUnlock)?.name || 'a quest'})` : '';
+  return `${s.trader} LL${s.level}${s.kind === 'barter' ? ' barter' : price}${quest}`;
+}
+
+function buildLockPopup(e) {
+  const el = document.createElement('div');
+  const k = e.key || { name: 'Unknown key' };
+  const sources = k.sources || [];
+  el.innerHTML = `
+    <div class="lock-pop">
+      ${k.image || k.iconLink ? `<img src="${escapeHtml(k.image || k.iconLink)}" alt="">` : ''}
+      <div>
+        <strong>${escapeHtml(k.name)}</strong>
+        <div class="muted small">${e.lock.type === 'trunk' ? 'Opens a car trunk' : 'Opens a locked door'}${e.lock.needsPower ? ' · needs power on' : ''}${e.floor ? ` · ${escapeHtml(e.floor)}` : ''}</div>
+      </div>
+    </div>
+    <div class="obj-label">Where to get it</div>
+    <div class="small">${sources.length ? sources.map((s) => escapeHtml(keySourceText(s))).join('<br>') : 'Not sold. Find it in raid.'}</div>
+    ${e.quests.length ? `<div class="obj-label">Needed for your quests</div><div class="small">${e.quests.map((t) => `<a href="#" data-details="${t.id}">${escapeHtml(t.name)}</a>`).join('<br>')}</div>` : ''}
+    ${k.wikiLink ? '<div class="pp-actions"><button data-act="wiki">Wiki</button></div>' : ''}`;
+  el.addEventListener('click', (ev) => {
+    const d = ev.target.closest('[data-details]');
+    if (d) {
+      ev.preventDefault();
+      QuestDetails.open(d.dataset.details);
+    }
+    if (ev.target.closest('[data-act="wiki"]')) window.tqm.openLink(k.wikiLink);
+  });
+  return el;
+}
+
+// ------------------------------------------------------------------ extracts
+// Small icons for special extracts (shown before the name on the map, in the legend and popups).
+const EXTRACT_KINDS = {
+  secret: { icon: '🗝️', label: 'Secret extract', help: 'Hidden extract. You have to find it, and it usually needs an item to use (shown under requirements).' },
+  flare: { icon: '🎆', label: 'Flare extract', help: 'Fire a red signal flare inside the extract zone to open it.' },
+  coop: { icon: '🤝', label: 'Co-op extract', help: 'A PMC and a Scav have to extract together.' },
+  vehicle: { icon: '🚗', label: 'Vehicle (V-Ex)', help: 'Pay the driver to leave by car. One car per raid.' },
+  train: { icon: '🚂', label: 'Train', help: 'Only available when the armored train arrives, partway through the raid.' },
+  cliff: { icon: '🧗', label: 'Cliff descent', help: 'Climbing down needs a Paracord and Red Rebel ice pick, and no armored rig.' },
+  elevator: { icon: '🛗', label: 'Elevator', help: 'Needs power or a switch turned on first.' },
+};
+window.EXTRACT_KINDS = EXTRACT_KINDS;
+const FACTION_TEXT = {
+  pmc: 'PMC extract: only usable as a PMC',
+  scav: 'Scav extract: only usable as a Scav',
+  shared: 'Usable as both PMC and Scav',
+};
+
+function buildExtractPopup(ex) {
+  const el = document.createElement('div');
+  const map = S.mapById.get(S.mapId);
+  const pay = ex.payment ? S.data.items?.[ex.payment.id] : null;
+  const reqs = [];
+  for (const s of ex.switches || []) reqs.push(`Turn on: ${escapeHtml(s.name)}`);
+  if (pay) reqs.push(`Pay ${ex.payment.count.toLocaleString()} ${escapeHtml(pay.name)}`);
+  el.innerHTML = `
+    <div class="pp-head"><strong>${escapeHtml(ex.name)}</strong> <span class="ex-badge faction-${ex.faction}">${{ pmc: 'PMC', scav: 'SCAV', shared: 'PMC + SCAV' }[ex.faction] || ex.faction}</span></div>
+    <div class="muted small">${FACTION_TEXT[ex.faction] || ''}</div>
+    ${(ex.kinds || []).map((k) => `<div class="ex-kind-row"><span>${EXTRACT_KINDS[k].icon}</span><div><b>${EXTRACT_KINDS[k].label}</b><div class="muted small">${EXTRACT_KINDS[k].help}</div></div></div>`).join('')}
+    ${reqs.length ? `<div class="obj-label">Requirements</div><div class="small">${reqs.join('<br>')}</div>` : '<div class="small" style="margin-top:6px">No special requirements listed.</div>'}
+    <div class="muted small" style="margin-top:8px">tarkov.dev has no extract photos. The wiki's map page has a picture of each extract entrance.</div>
+    ${map?.wiki ? '<div class="pp-actions"><button data-act="wiki">📷 Extract photos on the wiki</button></div>' : ''}`;
+  el.addEventListener('click', (ev) => {
+    if (ev.target.closest('[data-act="wiki"]')) window.tqm.openLink(map.wiki);
+  });
+  return el;
 }
 
 // ------------------------------------------------------------------ toasts
@@ -660,6 +848,13 @@ function wire() {
   });
   $('#extracts-toggle').addEventListener('click', () => window.tqm.setSettings({ showExtracts: !S.state.settings.showExtracts }));
   $('#spawns-toggle').addEventListener('click', () => window.tqm.setSettings({ showSpawns: !S.state.settings.showSpawns }));
+  $('#extract-legend').addEventListener('change', () => {
+    const factions = [...document.querySelectorAll('#extract-legend [data-faction]:checked')].map((c) => c.dataset.faction);
+    S.state.settings.extractFactions = factions;
+    renderMarkers();
+    window.tqm.setSettings({ extractFactions: factions });
+  });
+  $('#locks-toggle').addEventListener('click', () => window.tqm.setSettings({ showLocks: !S.state.settings.showLocks }));
   wirePlan();
   $('#sidebar-toggle').addEventListener('click', () => {
     S.state.settings.sidebarCollapsed = !S.state.settings.sidebarCollapsed;
@@ -695,6 +890,7 @@ function wire() {
 
   $('#quest-search').addEventListener('input', renderQuestList);
   $('#quest-status-filter').addEventListener('change', renderQuestList);
+  $('#quest-unlock-filter').addEventListener('change', renderQuestList);
   $('#quest-sort').addEventListener('change', (e) => {
     S.state.settings.questSort = e.target.value;
     renderQuestList();

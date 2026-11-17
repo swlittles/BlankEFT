@@ -40,6 +40,7 @@
       </div>
       <button class="toggle" id="extracts-toggle" title="Show extracts">Extracts</button>
       <button class="toggle" id="spawns-toggle" title="Show PMC spawn points">Spawns</button>
+      <button class="toggle" id="locks-toggle" title="Show locked rooms and car trunks, and which key opens each">🔑 Keys</button>
       </span>
       <button class="toggle" id="pin-toggle" title="Keep this window on top of the game">Pin</button>
       </div>
@@ -50,6 +51,13 @@
         <div id="map"></div>
         <div id="map-empty" hidden></div>
         <div id="position-chip" hidden></div>
+        <div id="extract-legend" class="map-legend" hidden>
+          <span class="legend-title">Extracts</span>
+          <label><input type="checkbox" data-faction="pmc"> <span class="lg-dot faction-pmc"></span>PMC</label>
+          <label><input type="checkbox" data-faction="scav"> <span class="lg-dot faction-scav"></span>Scav</label>
+          <label><input type="checkbox" data-faction="shared"> <span class="lg-dot faction-shared"></span>Both</label>
+          <div class="legend-kinds" title="Special extract types">🗝️ Secret · 🎆 Flare · 🤝 Co-op<br>🚗 V-Ex · 🚂 Train · 🧗 Cliff · 🛗 Elevator</div>
+        </div>
         <button id="sidebar-toggle" title="Hide the sidebar">›</button>
       </div>
       <aside id="sidebar">
@@ -71,6 +79,12 @@
               <option value="completed">Completed</option>
               <option value="locked">Locked</option>
               <option value="failed">Failed</option>
+            </select>
+            <select id="quest-unlock-filter" title="Quests that unlock items at traders">
+              <option value="">Any unlocks</option>
+              <option value="direct">🔓 Unlocks items</option>
+              <option value="later">⤳ Leads to unlocks</option>
+              <option value="either">Either</option>
             </select>
             <select id="quest-sort" title="Sort order">
               <option value="recent">Newest completed first</option>

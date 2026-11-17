@@ -14,6 +14,8 @@ const DEFAULTS = {
     followRaidMap: true,
     alwaysOnTop: false,
     sidebarCollapsed: false,
+    showLocks: false,
+    extractFactions: ['pmc', 'scav', 'shared'], // which extracts to show
     questSort: 'recent', // All quests tab: 'recent' | 'oldest' | 'trader' | 'name'
   },
   // per session mode ('pve' | 'regular' | 'pvpseason')
