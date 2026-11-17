@@ -167,4 +167,18 @@ function quaternionToYaw(qx, qy, qz, qw) {
   return (Math.atan2(sinyCosp, cosyCosp) * 180) / Math.PI;
 }
 
-module.exports = { splitEntries, interpretEntry, parseScreenshotName, normalizeMode, dataModeFor, quaternionToYaw };
+/**
+ * Is a held-back trailing entry clearly finished, so it can be used right away instead of
+ * waiting for the file to go quiet? True when the last line is complete and either the entry
+ * carries a JSON body that parses, or it's a one-line entry of a kind that never has a body.
+ */
+function isCompleteEntry(rest) {
+  if (!rest || !rest.endsWith('\n')) return false;
+  const { entries } = splitEntries(rest, { final: true });
+  if (entries.length !== 1) return false;
+  const lines = rest.replace(/\r/g, '').trimEnd().split('\n');
+  if (lines.length === 1) return !/Got notification/.test(entries[0].message);
+  return entries[0].json !== null;
+}
+
+module.exports = { splitEntries, interpretEntry, isCompleteEntry, parseScreenshotName, normalizeMode, dataModeFor, quaternionToYaw };

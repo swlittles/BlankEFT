@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { EventEmitter } = require('events');
-const { splitEntries, interpretEntry } = require('./logParser');
+const { splitEntries, interpretEntry, isCompleteEntry } = require('./logParser');
 
 const WATCHED_FILE_RE = /(application|push-notifications|backend)(_\d+)?\.log$/i;
 // Backend logs are large and only a few lines matter, so skip parsing unless one of them is present.
@@ -63,7 +63,7 @@ class LogWatcher extends EventEmitter {
   constructor(logsDir, opts = {}) {
     super();
     this.logsDir = logsDir;
-    this.pollMs = opts.pollMs || 1000;
+    this.pollMs = opts.pollMs || 500;
     this.timer = null;
     this.live = null; // { name, path, mode, files: Map<file, {offset, rest, idlePolls}> }
   }
@@ -179,8 +179,13 @@ class LogWatcher extends EventEmitter {
         st.rest = text.slice(text.lastIndexOf('\n') + 1); // keep only a partial last line
         continue;
       }
-      const flush = final || st.idlePolls >= 2;
-      const { entries, rest } = splitEntries(text, { final: flush });
+      // The newest entry may still be mid-write, so it's held back... unless it's clearly
+      // complete, or the file has been quiet for a couple of checks.
+      let { entries, rest } = splitEntries(text, { final: final || st.idlePolls >= 2 });
+      if (rest && isCompleteEntry(rest)) {
+        entries = entries.concat(splitEntries(rest, { final: true }).entries);
+        rest = '';
+      }
       st.rest = rest;
       for (const entry of entries) {
         const ev = interpretEntry(entry);

@@ -95,11 +95,16 @@ function plannedTasks() {
     .filter(Boolean);
 }
 
+// During a raid, your newest screenshot / logged position is the start, so the route re-plans from
+// where you are now. Before that (or between raids) the spawn you picked is used.
 function routeStart() {
   const plan = getPlan();
+  const p = S.state.position && S.state.position.map === S.mapId ? S.state.position : null;
+  const inRaid = ['inRaid', 'loading'].includes(S.state.raid?.status);
+  const when = p ? new Date(p.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+  if (p && inRaid) return { position: p, label: `You, from ${p.source === 'log' ? 'the game log' : 'your screenshot'} at ${when}`, live: true };
   if (plan.start) return { position: plan.start, label: plan.start.label || 'Start' };
-  const p = S.state.position;
-  if (p && p.map === S.mapId) return { position: p, label: 'Your position' };
+  if (p) return { position: p, label: `Your last position (${when})` };
   return null;
 }
 
@@ -110,7 +115,7 @@ function currentRoute() {
   const ex = plan.extract ? map.extracts.find((e) => e.name === plan.extract) : null;
   const start = routeStart();
   const r = Planner.planRoute(plannedTasks(), S.mapId, { start: start?.position || null, end: ex?.position || null, objectivesDone: S.state.objectivesDone || {} });
-  return { ...r, start: start?.position || null, startLabel: start?.label || null, end: ex?.position || null, extract: ex };
+  return { ...r, start: start?.position || null, startLabel: start?.label || null, startLive: !!start?.live, end: ex?.position || null, extract: ex };
 }
 
 function filterAllows(status) {
@@ -605,6 +610,7 @@ function renderPlan() {
     .map((s, i) => `<li data-stop="${i}"><span class="num">${i + 1}</span><div><b>${escapeHtml(s.task.name)}</b><div class="small">${escapeHtml(s.objective.description)}</div></div></li>`)
     .join('')}</ol>
   ${route.stops.length ? `<p class="muted small">About ${route.length} m in straight lines. Real paths around walls and buildings will be longer.</p>` : ''}
+  <p class="muted small">${route.startLive ? '📍 Following you: the route re-plans each time you take a screenshot.' : 'In raid, take a screenshot and the route re-plans from where you are.'}</p>
   ${route.anywhere.length ? `<h4>Anywhere on this map</h4><ul class="anywhere">${route.anywhere.map((a) => `<li><b>${escapeHtml(a.task.name)}</b>: ${escapeHtml(a.objective.description)}</li>`).join('')}</ul>` : ''}
   <button id="plan-fit" class="small-btn">Show whole route</button>`;
 
@@ -985,10 +991,9 @@ async function onState(st) {
     if (p.map !== S.mapId && S.state.settings.followRaidMap) selectMap(p.map);
     else {
       renderPosition();
-      if (!getPlan().start && S.state.settings.markerFilter === 'plan') {
-        mapView.setRoute(currentRoute());
-        renderPlan();
-      }
+      // re-plan the route from where you are now
+      if (S.state.settings.markerFilter === 'plan') mapView.setRoute(currentRoute());
+      renderPlan();
     }
   });
   window.tqm.on('toast', (t) => {

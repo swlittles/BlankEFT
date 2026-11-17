@@ -92,6 +92,17 @@ test('screenshot filename → position and yaw', () => {
   assert.strictEqual(parseScreenshotName('2026-10-10[15-36]_19.25 (0).png'), null);
 });
 
+test('complete trailing entries are recognised so they can be used right away', () => {
+  const { isCompleteEntry } = require('../src/main/logParser');
+  const header = '2026-11-17 10:05:00.000|1|Info|application|scene preset path:maps/woods_preset.bundle\n';
+  assert.strictEqual(isCompleteEntry(header), true);
+  assert.strictEqual(isCompleteEntry(header.trimEnd()), false, 'last line not finished');
+  const note = '2026-11-17 10:06:00.000|1|Info|push-notifications|Got notification | ChatMessageReceived\n';
+  assert.strictEqual(isCompleteEntry(note), false, 'JSON body still to come');
+  assert.strictEqual(isCompleteEntry(note + '{\n  "message": {\n'), false, 'half-written JSON');
+  assert.strictEqual(isCompleteEntry(note + '{\n  "message": { "type": 12 }\n}\n'), true);
+});
+
 test('session modes', () => {
   assert.strictEqual(normalizeMode('Pve'), 'pve');
   assert.strictEqual(normalizeMode('PvpSeason'), 'pvpseason');
