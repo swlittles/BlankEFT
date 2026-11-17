@@ -10,7 +10,8 @@
     "start": "electron .",
     "test": "node --test test/*.test.js",
     "scan": "node scripts/scan-logs.js",
-    "package": "electron-packager . TarkovQuestMap --icon=assets/icon.ico --platform=win32 --arch=x64 --out=release --overwrite --prune=true --ignore=^/test --ignore=^/release --ignore=^/scripts"
+    "package": "electron-packager . TarkovQuestMap --icon=assets/icon.ico --platform=win32 --arch=x64 --out=release --overwrite --prune=true --ignore=^/test --ignore=^/release --ignore=^/scripts",
+    "update-local": "node scripts/update-local.js"
   },
   "dependencies": {
     "leaflet": "^1.9.4"

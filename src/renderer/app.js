@@ -1,5 +1,5 @@
 'use strict';
-/* global MapView, escapeHtml, Planner, ArmoryViews, AV */
+/* global MapView, escapeHtml, Planner, ArmoryViews, AV, QuestDetails */
 
 const $ = (sel) => document.querySelector(sel);
 const STATUS_LABEL = { started: 'Active', available: 'Available', completed: 'Completed', failed: 'Failed', locked: 'Locked' };
@@ -154,9 +154,9 @@ function renderTopbar() {
   const st = S.state;
   const raidEl = $('#raid-status');
   const map = S.mapById.get(st.raid.map);
-  raidEl.className = `status-pill raid-${st.raid.status}`;
+  raidEl.className = `status-pill map-only raid-${st.raid.status}`;
   if (st.logError) {
-    raidEl.className = 'status-pill error';
+    raidEl.className = 'status-pill map-only error';
     raidEl.textContent = 'Logs not found';
     raidEl.title = st.logError;
   } else {
@@ -178,6 +178,7 @@ function renderTopbar() {
   $('#extracts-toggle').classList.toggle('active', !!st.settings.showExtracts);
   $('#spawns-toggle').classList.toggle('active', !!st.settings.showSpawns);
   $('#pin-toggle').classList.toggle('active', !!st.settings.alwaysOnTop);
+  applySidebar();
 
   const sel = $('#map-select');
   const maps = selectableMaps();
@@ -187,6 +188,14 @@ function renderTopbar() {
     sel.dataset.sig = sig;
   }
   if (S.mapId) sel.value = S.mapId;
+}
+
+function applySidebar() {
+  const collapsed = !!S.state.settings.sidebarCollapsed;
+  document.body.classList.toggle('sidebar-collapsed', collapsed);
+  const b = $('#sidebar-toggle');
+  b.textContent = collapsed ? '‹' : '›';
+  b.title = collapsed ? 'Show the sidebar' : 'Hide the sidebar';
 }
 
 function renderFloors() {
@@ -255,14 +264,27 @@ function renderHere() {
           .join('')}</ul>
         <div class="qc-actions">
           <button data-act="plan" class="${getPlan().tasks.includes(t.id) ? 'planned' : ''}">${getPlan().tasks.includes(t.id) ? '✓ In raid plan' : '+ Plan'}</button>
+          <button data-act="details" title="Pictures of the quest, its items, keys and rewards">🖼 Details</button>
           ${status === 'available' ? '<button data-act="start">Mark started</button>' : ''}
-          <button data-act="complete" class="primary">Quest complete</button>
           ${t.wikiLink ? '<button data-act="wiki">Wiki</button>' : ''}
+          <span class="spacer"></span>
+          <button data-act="complete" class="mark-complete" title="Mark this whole quest as completed. You can undo it.">☐ Mark Complete</button>
         </div>
       </div>`;
     }
   }
   el.innerHTML = html;
+}
+
+const STATUS_ORDER = { started: 0, available: 1, failed: 2, locked: 3 };
+
+function completedWhen(st) {
+  if (st.status !== 'completed') return '';
+  if (!st.time) return ' · <span class="when">completed (inferred, no date)</span>';
+  const d = new Date(st.time);
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  const date = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) });
+  return ` · <span class="when">completed ${date} ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>`;
 }
 
 function renderQuestList() {
@@ -278,7 +300,18 @@ function renderQuestList() {
     if (q && !t.name.toLowerCase().includes(q) && !t.trader.name.toLowerCase().includes(q)) continue;
     rows.push([t, st]);
   }
-  rows.sort((a, b) => a[0].trader.name.localeCompare(b[0].trader.name) || a[0].minPlayerLevel - b[0].minPlayerLevel || a[0].name.localeCompare(b[0].name));
+  const sort = S.state.settings.questSort || 'recent';
+  $('#quest-sort').value = sort;
+  const byTrader = (a, b) => a[0].trader.name.localeCompare(b[0].trader.name) || a[0].minPlayerLevel - b[0].minPlayerLevel || a[0].name.localeCompare(b[0].name);
+  // Completed quests with a date first (newest or oldest), then completed ones with no date
+  // (inferred), then everything else: active, available, failed, locked.
+  const group = (st) => (st.status === 'completed' ? (st.time ? 0 : 1) : 2 + (STATUS_ORDER[st.status] ?? 9));
+  if (sort === 'name') rows.sort((a, b) => a[0].name.localeCompare(b[0].name));
+  else if (sort === 'trader') rows.sort(byTrader);
+  else {
+    const dir = sort === 'oldest' ? 1 : -1;
+    rows.sort((a, b) => group(a[1]) - group(b[1]) || (group(a[1]) === 0 ? dir * (a[1].time - b[1].time) : 0) || byTrader(a, b));
+  }
   $('#quest-counts').textContent = Object.entries(STATUS_LABEL)
     .map(([k, label]) => `${label}: ${counts[k] || 0}`)
     .join(' · ');
@@ -288,8 +321,8 @@ function renderQuestList() {
       const mapName = t.mapId ? S.mapById.get(t.mapId)?.name : '';
       return `<div class="quest-row" data-task="${t.id}">
         <div class="qr-main">
-          <div class="qr-name">${escapeHtml(t.name)}${t.kappaRequired ? ' <span class="tag" title="Required for Kappa">K</span>' : ''}</div>
-          <div class="qr-sub muted small">${escapeHtml(t.trader.name)} · lvl ${t.minPlayerLevel}${mapName ? ` · ${escapeHtml(mapName)}` : ''}</div>
+          <div class="qr-name"><a href="#" data-details title="Show pictures, items and rewards">${escapeHtml(t.name)}</a>${t.kappaRequired ? ' <span class="tag" title="Required for Kappa">K</span>' : ''}</div>
+          <div class="qr-sub muted small">${escapeHtml(t.trader.name)} · lvl ${t.minPlayerLevel}${mapName ? ` · ${escapeHtml(mapName)}` : ''}${completedWhen(st)}</div>
         </div>
         ${statusChip(st)}
         <select data-act="set" title="Override the detected status">
@@ -450,7 +483,7 @@ function renderPlan() {
   const pick = (list) =>
     list
       .sort((a, b) => a.name.localeCompare(b.name))
-      .map((t) => `<label class="pick"><input type="checkbox" data-plan-task="${t.id}" ${plan.tasks.includes(t.id) ? 'checked' : ''}/> <span>${escapeHtml(t.name)}</span><span class="trader">${escapeHtml(t.trader.name)}</span></label>`)
+      .map((t) => `<label class="pick"><input type="checkbox" data-plan-task="${t.id}" ${plan.tasks.includes(t.id) ? 'checked' : ''}/> <span>${escapeHtml(t.name)}</span><button class="icon-btn" data-details-task="${t.id}" title="Details and pictures">🖼</button><span class="trader">${escapeHtml(t.trader.name)}</span></label>`)
       .join('') || '<p class="muted small">None on this map.</p>';
   const extracts = map.extracts.filter((e) => e.faction !== 'scav');
   const pos = S.state.position && S.state.position.map === S.mapId ? S.state.position : null;
@@ -524,6 +557,10 @@ function wirePlan() {
   el.addEventListener('click', async (e) => {
     const t = e.target.closest('button, li[data-stop]');
     if (!t) return;
+    if (t.dataset.detailsTask) {
+      e.preventDefault();
+      return QuestDetails.open(t.dataset.detailsTask);
+    }
     if (t.id === 'plan-clear') await window.tqm.setPlan(S.mapId, null);
     if (t.id === 'plan-clear-start') await savePlan({ start: null });
     if (t.id === 'plan-fit') mapView.fitRoute(currentRoute());
@@ -553,26 +590,58 @@ function buildPopup(e) {
     ${e.questItem ? `<div class="pp-item">${e.questItem.iconLink ? `<img src="${escapeHtml(e.questItem.iconLink)}" alt="">` : ''}<span>${escapeHtml(e.questItem.name)}</span></div>` : ''}
     <div class="pp-actions">
       <button data-act="obj">Objective done</button>
-      <button data-act="complete" class="primary">Quest complete</button>
+      <button data-act="details">🖼 Details</button>
       ${e.task.wikiLink ? '<button data-act="wiki">Wiki</button>' : ''}
+      <span class="spacer"></span>
+      <button data-act="complete" class="mark-complete" title="Mark this whole quest as completed. You can undo it.">☐ Mark Complete</button>
     </div>`;
   el.addEventListener('click', async (ev) => {
     const act = ev.target.closest('button')?.dataset.act;
     if (act === 'obj') await window.tqm.setObjective(e.objective.id, true);
-    else if (act === 'complete') await window.tqm.setTask(e.task.id, 'completed');
+    else if (act === 'details') QuestDetails.open(e.task.id);
+    else if (act === 'complete') await markComplete(e.task.id);
     else if (act === 'wiki') window.tqm.openLink(e.task.wikiLink);
   });
   return el;
 }
 
+/** Mark a quest complete by hand, with an Undo that puts back whatever was there before. */
+async function markComplete(taskId) {
+  const before = taskState(taskId);
+  const previous = before.source === 'manual' ? before.status : null;
+  const name = S.taskById.get(taskId)?.name || 'Quest';
+  await window.tqm.setTask(taskId, 'completed');
+  toast(`Marked "${name}" complete`, 'ok', {
+    label: 'Undo',
+    onClick: async () => {
+      await window.tqm.setTask(taskId, previous);
+      toast(`"${name}" is back to ${STATUS_LABEL[previous || before.status] || 'its detected status'}`);
+    },
+    ms: 10000,
+  });
+}
+
 // ------------------------------------------------------------------ toasts
-function toast(text, kind = 'info') {
+function toast(text, kind = 'info', action = null) {
   const el = document.createElement('div');
   el.className = `toast ${kind}`;
-  el.textContent = text;
+  const span = document.createElement('span');
+  span.textContent = text;
+  el.appendChild(span);
+  if (action) {
+    const b = document.createElement('button');
+    b.className = 'toast-action';
+    b.textContent = action.label;
+    b.addEventListener('click', () => {
+      el.remove();
+      action.onClick();
+    });
+    el.appendChild(b);
+  }
   $('#toasts').appendChild(el);
-  setTimeout(() => el.classList.add('out'), 5000);
-  setTimeout(() => el.remove(), 5600);
+  const ms = action?.ms || 5000;
+  setTimeout(() => el.classList.add('out'), ms);
+  setTimeout(() => el.remove(), ms + 600);
 }
 
 // ------------------------------------------------------------------ events
@@ -592,6 +661,13 @@ function wire() {
   $('#extracts-toggle').addEventListener('click', () => window.tqm.setSettings({ showExtracts: !S.state.settings.showExtracts }));
   $('#spawns-toggle').addEventListener('click', () => window.tqm.setSettings({ showSpawns: !S.state.settings.showSpawns }));
   wirePlan();
+  $('#sidebar-toggle').addEventListener('click', () => {
+    S.state.settings.sidebarCollapsed = !S.state.settings.sidebarCollapsed;
+    applySidebar(); // instant; the setting is saved in the background
+    window.tqm.setSettings({ sidebarCollapsed: S.state.settings.sidebarCollapsed });
+  });
+  // keep the map sized right when the top bar wraps or the sidebar opens/closes
+  new ResizeObserver(() => mapView.map?.invalidateSize({ pan: false })).observe($('#map'));
   $('#pin-toggle').addEventListener('click', () => window.tqm.setSettings({ alwaysOnTop: !S.state.settings.alwaysOnTop }));
   $('#mode-select').addEventListener('change', (e) => window.tqm.setSettings({ viewMode: e.target.value || null }));
   $('#mode-warn').addEventListener('click', (e) => window.tqm.setSettings({ viewMode: e.currentTarget.dataset.mode }));
@@ -607,8 +683,9 @@ function wire() {
     const id = card.dataset.task;
     const act = btn.dataset.act;
     if (act === 'focus') mapView.focusTask(id);
+    else if (act === 'details') QuestDetails.open(id);
     else if (act === 'plan') await togglePlanned(id);
-    else if (act === 'complete') await window.tqm.setTask(id, 'completed');
+    else if (act === 'complete') await markComplete(id);
     else if (act === 'start') await window.tqm.setTask(id, 'started');
     else if (act === 'wiki') window.tqm.openLink(S.taskById.get(id).wikiLink);
   });
@@ -618,6 +695,17 @@ function wire() {
 
   $('#quest-search').addEventListener('input', renderQuestList);
   $('#quest-status-filter').addEventListener('change', renderQuestList);
+  $('#quest-sort').addEventListener('change', (e) => {
+    S.state.settings.questSort = e.target.value;
+    renderQuestList();
+    window.tqm.setSettings({ questSort: e.target.value });
+  });
+  $('#quest-list').addEventListener('click', (e) => {
+    if (!e.target.closest('[data-details]')) return;
+    e.preventDefault();
+    QuestDetails.open(e.target.closest('.quest-row').dataset.task);
+  });
+  QuestDetails.wire();
   $('#quest-list').addEventListener('change', (e) => {
     if (e.target.dataset.act !== 'set') return;
     const id = e.target.closest('.quest-row').dataset.task;
@@ -708,6 +796,7 @@ async function onState(st) {
     }
   });
   window.tqm.on('toast', (t) => {
+    if (t.kind === 'save-error') return toast(`Couldn't save your progress: ${t.error}. Close any other copy of the app and try again.`, 'error');
     if (t.kind === 'prestige') return toast(`Prestige detected in ${t.modeLabel}. Quest progress for that mode starts fresh.`, 'ok');
     if (t.kind !== 'task') return;
     const name = S.taskById.get(t.taskId)?.name || 'Unknown quest';

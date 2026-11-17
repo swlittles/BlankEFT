@@ -13,6 +13,8 @@ const DEFAULTS = {
     showExtracts: true,
     followRaidMap: true,
     alwaysOnTop: false,
+    sidebarCollapsed: false,
+    questSort: 'recent', // All quests tab: 'recent' | 'oldest' | 'trader' | 'name'
   },
   // per session mode ('pve' | 'regular' | 'pvpseason')
   profiles: {},
@@ -26,6 +28,7 @@ function emptyProfile() {
   return {
     logEvents: {},
     manual: {},
+    manualAt: {}, // taskId -> when you set it by hand
     objectivesDone: {},
     plans: {},
     prestiges: [],
@@ -102,7 +105,25 @@ class Store {
 
   save() {
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => this.flush(), 300);
+    this.timer = setTimeout(() => this.trySave(), 300);
+  }
+
+  /** Save with a few retries (another program can briefly lock the file); report failure instead of losing it. */
+  trySave(attempt = 0) {
+    try {
+      this.flush();
+      if (this.lastError) {
+        this.lastError = null;
+        this.onSaveStatus?.(null);
+      }
+    } catch (err) {
+      if (attempt < 4) {
+        this.timer = setTimeout(() => this.trySave(attempt + 1), 500 * (attempt + 1));
+        return;
+      }
+      this.lastError = String(err.message || err);
+      this.onSaveStatus?.(this.lastError);
+    }
   }
 
   flush() {

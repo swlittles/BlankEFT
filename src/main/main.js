@@ -124,6 +124,7 @@ async function startWatching() {
         // a fresh prestige wipes quest progress, so hand-made marks from before it no longer apply
         store.updateProfile(mode, (p) => {
           p.manual = {};
+          p.manualAt = {};
           p.objectivesDone = {};
           p.plans = {};
         });
@@ -211,7 +212,12 @@ function profileSummary(mode) {
 async function taskStatesFor(mode) {
   const model = await data.load(dataModeFor(mode));
   const p = store.profile(mode);
-  return computeTaskStates(model.tasks, Object.values(p.logEvents), p.manual, { since: effectiveSince(p), level: p.level, faction: p.faction });
+  return computeTaskStates(model.tasks, Object.values(p.logEvents), p.manual, {
+    since: effectiveSince(p),
+    level: p.level,
+    faction: p.faction,
+    manualAt: p.manualAt,
+  });
 }
 
 async function buildState() {
@@ -236,6 +242,7 @@ async function buildState() {
     logsDir: live.logsDir,
     screenshotsDir: live.screenshotsDir,
     logError: live.logError,
+    saveError: live.saveError || null,
     dataError: live.dataError,
     sessions: { total: live.sessions.length, byMode: sessionCounts, first: live.sessions[0]?.time || null },
     settings: store.settings,
@@ -273,8 +280,14 @@ function registerIpc() {
   ipcMain.handle('task:set', (_e, { taskId, status }) => {
     const mode = viewMode();
     store.updateProfile(mode, (p) => {
-      if (status === null || status === 'auto') delete p.manual[taskId];
-      else p.manual[taskId] = status;
+      p.manualAt = p.manualAt || {};
+      if (status === null || status === 'auto') {
+        delete p.manual[taskId];
+        delete p.manualAt[taskId];
+      } else {
+        p.manual[taskId] = status;
+        p.manualAt[taskId] = Date.now();
+      }
     });
     pushState();
   });
@@ -293,7 +306,8 @@ function registerIpc() {
       else
         p.plans[mapId] = {
           tasks: (plan.tasks || []).filter((t) => typeof t === 'string'),
-          start: plan.start && Number.isFinite(plan.start.x) ? { x: plan.start.x, y: plan.start.y, z: plan.start.z, label: String(plan.start.label || '') } : null,
+          start:
+            plan.start && Number.isFinite(plan.start.x) ? { x: plan.start.x, y: plan.start.y, z: plan.start.z, label: String(plan.start.label || '') } : null,
           extract: plan.extract ? String(plan.extract) : null,
         };
     });
@@ -321,6 +335,7 @@ function registerIpc() {
         p.since = when;
         p.sinceReason = 'wipe';
         p.manual = {};
+        p.manualAt = {};
         p.objectivesDone = {};
         p.plans = {};
         if (resetPrestige) p.prestigeManual = { level: 0, time: when };
@@ -332,13 +347,14 @@ function registerIpc() {
   ipcMain.handle('profile:resetManual', () => {
     store.updateProfile(viewMode(), (p) => {
       p.manual = {};
+      p.manualAt = {};
       p.objectivesDone = {};
     });
     pushState();
   });
 
   ipcMain.handle('settings:set', (_e, patch) => {
-    const allowed = ['viewMode', 'markerFilter', 'showExtracts', 'showSpawns', 'followRaidMap', 'alwaysOnTop'];
+    const allowed = ['viewMode', 'markerFilter', 'showExtracts', 'showSpawns', 'followRaidMap', 'alwaysOnTop', 'questSort', 'sidebarCollapsed'];
     const clean = {};
     for (const k of allowed) if (k in patch) clean[k] = patch[k];
     store.setSettings(clean);
@@ -372,7 +388,7 @@ function registerIpc() {
 // ---------------------------------------------------------------- app
 function createWindow() {
   win = new BrowserWindow({
-    width: 1500,
+    width: Number(process.env.TQM_WIDTH) || 1500, // TQM_WIDTH: dev aid for testing layouts
     height: 950,
     minWidth: 900,
     minHeight: 600,
@@ -397,16 +413,19 @@ function createWindow() {
   if (process.env.TQM_CAPTURE) {
     win.webContents.on('console-message', (e) => console.log(`[renderer:${e.level}] ${e.message}`));
     win.webContents.on('did-finish-load', () => {
-      setTimeout(async () => {
-        if (process.env.TQM_JS) {
-          console.log('js result:', JSON.stringify(await win.webContents.executeJavaScript(process.env.TQM_JS)));
-          await new Promise((r) => setTimeout(r, 4000));
-        }
-        const img = await win.webContents.capturePage();
-        fs.writeFileSync(process.env.TQM_CAPTURE, img.toPNG());
-        console.log('captured', process.env.TQM_CAPTURE);
-        if (process.env.TQM_EXIT) app.quit();
-      }, Number(process.env.TQM_CAPTURE_DELAY || 6000));
+      setTimeout(
+        async () => {
+          if (process.env.TQM_JS) {
+            console.log('js result:', JSON.stringify(await win.webContents.executeJavaScript(process.env.TQM_JS)));
+            await new Promise((r) => setTimeout(r, 4000));
+          }
+          const img = await win.webContents.capturePage();
+          fs.writeFileSync(process.env.TQM_CAPTURE, img.toPNG());
+          console.log('captured', process.env.TQM_CAPTURE);
+          if (process.env.TQM_EXIT) app.quit();
+        },
+        Number(process.env.TQM_CAPTURE_DELAY || 6000),
+      );
     });
   }
 }
@@ -417,8 +436,22 @@ if (process.env.TQM_USER_DATA) app.setPath('userData', process.env.TQM_USER_DATA
 // Lets Windows group the window with its taskbar/desktop shortcuts.
 app.setAppUserModelId('TarkovQuestMap.App');
 
+// One copy at a time: a second launch just brings the open window forward, so two
+// windows can never overwrite each other's saved progress.
+if (!process.env.TQM_CAPTURE && !app.requestSingleInstanceLock()) app.quit();
+app.on('second-instance', () => {
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.focus();
+});
+
 app.whenReady().then(async () => {
   store = new Store(app.getPath('userData'));
+  store.onSaveStatus = (error) => {
+    live.saveError = error;
+    pushState();
+    if (error) send('toast', { kind: 'save-error', error });
+  };
   data = new TarkovData(path.join(app.getPath('userData'), 'cache'));
   registerIpc();
   createWindow();

@@ -25,7 +25,7 @@ function computeTaskStates(tasks, logEvents, manual = {}, opts = {}) {
   for (const [taskId, status] of Object.entries(manual)) {
     if (!byId.has(taskId)) continue;
     if (status === 'none') delete state[taskId];
-    else state[taskId] = { status, source: 'manual' };
+    else state[taskId] = { status, source: 'manual', time: opts.manualAt?.[taskId] || null };
   }
   const manualNone = new Set(Object.entries(manual).filter(([, s]) => s === 'none').map(([id]) => id));
 

@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="../../node_modules/leaflet/dist/leaflet.css" />
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body>
+  <body data-view="map">
     <header id="topbar">
       <div class="brand">TARKOV<span>QUEST MAP</span></div>
       <div class="seg views" id="view-seg">
@@ -24,7 +24,7 @@
       </label>
       <span class="status-pill prestige" id="prestige-pill" title="Prestige level for this mode (change it in Settings)"></span>
       <button class="status-pill warn" id="mode-warn" hidden></button>
-      <div class="spacer"></div>
+      <div class="tb-right">
       <span class="map-only map-ctls">
       <label class="ctl">Map
         <select id="map-select"></select>
@@ -42,6 +42,7 @@
       <button class="toggle" id="spawns-toggle" title="Show PMC spawn points">Spawns</button>
       </span>
       <button class="toggle" id="pin-toggle" title="Keep this window on top of the game">Pin</button>
+      </div>
     </header>
 
     <div id="body">
@@ -49,6 +50,7 @@
         <div id="map"></div>
         <div id="map-empty" hidden></div>
         <div id="position-chip" hidden></div>
+        <button id="sidebar-toggle" title="Hide the sidebar">›</button>
       </div>
       <aside id="sidebar">
         <nav class="tabs">
@@ -70,6 +72,12 @@
               <option value="locked">Locked</option>
               <option value="failed">Failed</option>
             </select>
+            <select id="quest-sort" title="Sort order">
+              <option value="recent">Newest completed first</option>
+              <option value="oldest">Oldest completed first</option>
+              <option value="trader">Trader &amp; level</option>
+              <option value="name">Name</option>
+            </select>
           </div>
           <div id="quest-counts" class="muted small"></div>
           <div id="quest-list"></div>
@@ -79,6 +87,7 @@
     </div>
     <div id="view-ammo" class="view" hidden></div>
     <div id="view-guns" class="view" hidden></div>
+    <div id="modal" hidden></div>
     <div id="toasts"></div>
 
     <script src="../../node_modules/leaflet/dist/leaflet.js"></script>
@@ -86,6 +95,7 @@
     <script src="armory.js"></script>
     <script src="armoryViews.js"></script>
     <script src="mapView.js"></script>
+    <script src="questDetails.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

@@ -41,8 +41,9 @@ a { color: var(--accent); }
 [hidden] { display: none !important; }
 
 /* top bar */
+body { display: flex; flex-direction: column; }
 #topbar {
-  height: 48px; display: flex; align-items: center; gap: 10px; padding: 0 12px;
+  min-height: 48px; flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 7px 12px;
   background: var(--panel); border-bottom: 1px solid var(--line);
 }
 .brand { font-weight: 800; letter-spacing: 0.12em; color: var(--accent); white-space: nowrap; }
@@ -64,7 +65,7 @@ a { color: var(--accent); }
 .seg button.active, .toggle.active { background: #3a3424; border-color: #6b5c37; color: #f6e7bd; }
 
 /* layout */
-#body { display: flex; height: calc(100% - 48px); }
+#body { display: flex; flex: 1; min-height: 0; }
 #map-wrap { position: relative; flex: 1; min-width: 0; }
 #map { position: absolute; inset: 0; background: #0d0f11; }
 #position-chip {
@@ -242,10 +243,9 @@ ul.anywhere { margin: 4px 0 8px; padding-left: 18px; }
 
 /* Views: Map / Ammo / Gunsmith */
 body:not([data-view='map']) .map-only { display: none !important; }
-body[data-view] .map-ctls { display: contents; }
 .map-ctls { display: contents; }
 .seg.views button { padding: 4px 14px; font-weight: 600; }
-.view { height: calc(100% - 48px); display: flex; flex-direction: column; overflow: hidden; }
+.view { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .pad { padding: 12px; }
 .progress-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); font-size: 12px; }
 .progress-panel .pp-title { font-weight: 700; color: var(--accent); margin-right: 4px; }
@@ -319,3 +319,63 @@ td.cls.r6 { background: #3f9d58; }
 .ammo-picks { display: flex; gap: 8px; flex-wrap: wrap; }
 .ammo-picks .need { min-width: 220px; }
 .ammo-picks img { width: 32px; height: 32px; object-fit: contain; }
+
+/* Mark Complete: clearly a button, kept apart from status labels */
+.qc-actions .spacer, .pp-actions .spacer { flex: 1; }
+button.mark-complete {
+  background: transparent; border: 1px dashed #4f7a43; color: #bfe7b0; font-weight: 600; border-radius: 6px;
+}
+button.mark-complete:hover:not(:disabled) { background: #22331f; border-style: solid; border-color: #7ad66a; color: #e2f7da; }
+.toast { display: flex; align-items: center; gap: 12px; }
+.toast-action { padding: 2px 10px; font-weight: 700; background: #2a2e35; border-color: var(--accent); color: var(--accent); }
+.quest-row .when { color: var(--completed); }
+.quest-tools select { max-width: 150px; }
+
+/* Quest details panel */
+#modal { position: fixed; inset: 0; z-index: 3000; background: rgba(0, 0, 0, 0.65); display: grid; place-items: center; padding: 24px; }
+.modal-card { width: min(880px, 100%); max-height: 100%; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6); }
+.modal-card header { display: flex; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.modal-card header h2 { margin: 0 0 4px; font-size: 20px; }
+.modal-card .close { border: 0; background: none; font-size: 18px; color: var(--muted); }
+.modal-body { overflow-y: auto; padding: 4px 16px 16px; }
+.modal-body h3 { margin: 18px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); }
+.modal-card footer { display: flex; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--line); }
+.modal-card footer .spacer { flex: 1; }
+img.banner { display: block; width: 100%; max-height: 300px; object-fit: cover; border-radius: 8px; margin-top: 12px; cursor: zoom-in; }
+.details-objectives { margin: 0; padding-left: 20px; }
+.details-objectives > li { margin: 0 0 14px; }
+.details-objectives > li.done .obj-text { text-decoration: line-through; color: var(--muted); }
+.obj-text { margin-bottom: 6px; }
+.obj-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin: 8px 0 4px; }
+.fir { color: var(--active); text-transform: none; }
+.tiles { display: flex; flex-wrap: wrap; gap: 6px; }
+.tile { position: relative; width: 96px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 4px; text-align: center; font-size: 11px; }
+.tile img { width: 64px; height: 64px; object-fit: contain; display: block; margin: 0 auto 2px; cursor: zoom-in; background: #0f1113; border-radius: 4px; }
+.tile .tile-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile .qty { position: absolute; top: 4px; right: 6px; font-weight: 700; color: var(--accent); text-shadow: 0 0 3px #000; }
+.tile.more { display: grid; place-items: center; color: var(--text); cursor: help; }
+.quest-item { display: flex; gap: 12px; align-items: flex-start; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 6px 0; }
+.quest-item img { width: 128px; height: 128px; object-fit: contain; background: #0f1113; border-radius: 6px; cursor: zoom-in; flex: none; }
+.quest-item p { margin: 4px 0 0; }
+.lightbox { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); display: grid; place-items: center; z-index: 3100; cursor: zoom-out; }
+.lightbox[hidden] { display: none; }
+.lightbox img { max-width: 92vw; max-height: 84vh; object-fit: contain; }
+.lightbox .caption { position: absolute; bottom: 24px; left: 0; right: 0; text-align: center; color: #fff; }
+.qr-name a { color: var(--text); text-decoration: none; }
+.qr-name a:hover { color: var(--accent); text-decoration: underline; }
+.icon-btn { border: 0; background: none; padding: 0 4px; cursor: pointer; }
+
+/* Top bar: map controls + Pin sit on the right; when the window is too narrow they wrap to a second line as one group */
+.tb-right { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 10px; }
+@media (max-width: 1100px) {
+  .brand span { display: none; }
+}
+
+/* Collapsible sidebar */
+#sidebar-toggle {
+  position: absolute; right: 0; top: 50%; transform: translateY(-50%); z-index: 700; width: 18px; height: 56px; padding: 0;
+  border-radius: 6px 0 0 6px; border-right: 0; background: var(--panel); color: var(--accent); font-size: 16px; line-height: 1;
+}
+#sidebar-toggle:hover { background: #2a2e35; }
+body.sidebar-collapsed #sidebar { display: none; }
+body.sidebar-collapsed #toasts { right: 16px; }

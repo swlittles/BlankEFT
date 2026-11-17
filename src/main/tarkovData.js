@@ -146,6 +146,7 @@ function buildModel({ dataMode, tasks, tasksEn, maps, mapsEn, traders, tradersEn
         name: (it && tItem(it.name)) || (typeof x === 'object' && x.name) || id,
         shortName: (it && tItem(it.shortName)) || null,
         iconLink: it?.iconLink || null,
+        image: it?.image512pxLink || it?.inspectImageLink || null,
         wikiLink: it?.wikiLink || null,
       };
     }
@@ -195,6 +196,14 @@ function buildModel({ dataMode, tasks, tasksEn, maps, mapsEn, traders, tradersEn
     wikiLink: t.wikiLink || null,
     taskRequirements: (t.taskRequirements || []).map((r) => ({ task: r.task, status: r.status || [] })),
     neededKeys: (t.neededKeys || []).map((nk) => ({ map: nk.map, keys: refList(nk.keys) })),
+    image: t.taskImageLink || null,
+    rewards: {
+      items: (t.finishRewards?.items || []).map((r) => ({ id: ref(r.item), count: r.count })).filter((r) => r.id),
+      standing: (t.finishRewards?.traderStanding || []).map((r) => ({ trader: traderById[r.trader]?.name || r.trader, standing: r.standing })),
+      offerUnlock: (t.finishRewards?.offerUnlock || []).map((u) => ({ id: ref(u.item), trader: traderById[u.trader]?.name || u.trader, level: u.level })).filter((u) => u.id),
+      startItems: (t.startRewards?.items || []).map((r) => ({ id: ref(r.item), count: r.count })).filter((r) => r.id),
+    },
+    experience: t.experience || 0,
     objectives: (t.objectives || []).map((o) => {
       const qi = o.questItem && items[o.questItem];
       return {
@@ -206,7 +215,15 @@ function buildModel({ dataMode, tasks, tasksEn, maps, mapsEn, traders, tradersEn
         maps: o.maps || [],
         zones: (o.zones || []).map(zone),
         possibleLocations: (o.possibleLocations || []).map((l) => ({ map: l.map, positions: l.positions })),
-        questItem: qi ? { id: qi.id, name: tTask(qi.name), iconLink: qi.iconLink } : null,
+        questItem: qi
+          ? {
+              id: qi.id,
+              name: tTask(qi.name),
+              iconLink: qi.iconLink,
+              image: qi.image512pxLink || qi.inspectImageLink || qi.iconLink,
+              description: tasksEn?.data?.[qi.description] || null,
+            }
+          : null,
         foundInRaid: !!o.foundInRaid,
         items: refList(o.items),
         markerItem: o.markerItem ? ref(o.markerItem) : null,
