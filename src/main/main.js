@@ -199,6 +199,9 @@ function profileSummary(mode) {
     ignorePrestige: !!p.ignorePrestige,
     level: p.level,
     faction: p.faction,
+    traderLevels: p.traderLevels || {},
+    useFlea: p.useFlea !== false,
+    useBarters: p.useBarters !== false,
     manualCount: Object.keys(p.manual).length,
     logEventCount: Object.keys(p.logEvents).length,
     countedEventCount: Object.values(p.logEvents).filter((e) => !effectiveSince(p) || e.time >= effectiveSince(p)).length,
@@ -265,6 +268,8 @@ function registerIpc() {
 
   ipcMain.handle('svg:get', (_e, url) => data.svg(String(url)));
 
+  ipcMain.handle('armory:get', (_e, { mode, force } = {}) => data.armory(dataModeFor(mode || viewMode()), { force: !!force }));
+
   ipcMain.handle('task:set', (_e, { taskId, status }) => {
     const mode = viewMode();
     store.updateProfile(mode, (p) => {
@@ -296,7 +301,7 @@ function registerIpc() {
   });
 
   ipcMain.handle('profile:set', (_e, patch) => {
-    const allowed = ['since', 'level', 'faction', 'ignorePrestige'];
+    const allowed = ['since', 'level', 'faction', 'ignorePrestige', 'traderLevels', 'useFlea', 'useBarters'];
     store.updateProfile(viewMode(), (p) => {
       for (const k of allowed) if (k in patch) p[k] = patch[k];
       if ('since' in patch) p.sinceReason = patch.since ? 'date' : null;

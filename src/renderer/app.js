@@ -1,5 +1,5 @@
 'use strict';
-/* global MapView, escapeHtml, Planner */
+/* global MapView, escapeHtml, Planner, ArmoryViews, AV */
 
 const $ = (sel) => document.querySelector(sel);
 const STATUS_LABEL = { started: 'Active', available: 'Available', completed: 'Completed', failed: 'Failed', locked: 'Locked' };
@@ -375,7 +375,43 @@ function renderSettings() {
   `;
 }
 
+// ------------------------------------------------------------------ views (Map / Ammo / Gunsmith)
+let currentView = 'map';
+async function showView(name) {
+  currentView = name;
+  for (const b of document.querySelectorAll('#view-seg button')) b.classList.toggle('active', b.dataset.view === name);
+  document.body.dataset.view = name;
+  $('#body').hidden = name !== 'map';
+  $('#view-ammo').hidden = name !== 'ammo';
+  $('#view-guns').hidden = name !== 'guns';
+  if (name === 'map') {
+    mapView.map?.invalidateSize();
+    return;
+  }
+  renderArmoryView();
+  if (!AV.armory || AV.dataMode !== S.state.dataMode) {
+    try {
+      await ArmoryViews.ensureArmory();
+    } catch (err) {
+      toast(`Could not load weapon data: ${err.message || err}`, 'error');
+    }
+    renderArmoryView();
+  }
+}
+window.showView = showView;
+
+function renderArmoryView() {
+  if (currentView === 'map') return;
+  if (AV.armory && AV.dataMode !== S.state.dataMode && !AV.loading) {
+    // switched between PvE and PvP data: reload, then draw again
+    ArmoryViews.ensureArmory().then(renderArmoryView, (err) => toast(`Could not load weapon data: ${err.message || err}`, 'error'));
+  }
+  if (currentView === 'ammo') ArmoryViews.renderAmmo();
+  if (currentView === 'guns') ArmoryViews.renderGuns();
+}
+
 function renderAll() {
+  renderArmoryView();
   renderTopbar();
   renderMarkers();
   renderPosition();
@@ -542,6 +578,12 @@ function toast(text, kind = 'info') {
 // ------------------------------------------------------------------ events
 function wire() {
   $('#map-select').addEventListener('change', (e) => selectMap(e.target.value));
+  $('#view-seg').addEventListener('click', (e) => {
+    const v = e.target.closest('button')?.dataset.view;
+    if (v) showView(v);
+  });
+  ArmoryViews.wireAmmo();
+  ArmoryViews.wireGuns();
   $('#floor-select').addEventListener('change', (e) => mapView.setFloor(e.target.value || null));
   $('#filter-seg').addEventListener('click', (e) => {
     const f = e.target.closest('button')?.dataset.filter;

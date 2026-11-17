@@ -13,13 +13,19 @@
   <body>
     <header id="topbar">
       <div class="brand">TARKOV<span>QUEST MAP</span></div>
-      <div class="status-pill" id="raid-status" title="Detected from the game's log files">Waiting for logs…</div>
+      <div class="seg views" id="view-seg">
+        <button data-view="map" class="active">Map</button>
+        <button data-view="ammo">Ammo</button>
+        <button data-view="guns">Gunsmith</button>
+      </div>
+      <div class="status-pill map-only" id="raid-status" title="Detected from the game's log files">Waiting for logs…</div>
       <label class="ctl" title="Which game mode's quest progress is shown. Each mode tracks its own progress.">Mode
         <select id="mode-select"></select>
       </label>
       <span class="status-pill prestige" id="prestige-pill" title="Prestige level for this mode (change it in Settings)"></span>
       <button class="status-pill warn" id="mode-warn" hidden></button>
       <div class="spacer"></div>
+      <span class="map-only map-ctls">
       <label class="ctl">Map
         <select id="map-select"></select>
       </label>
@@ -34,6 +40,7 @@
       </div>
       <button class="toggle" id="extracts-toggle" title="Show extracts">Extracts</button>
       <button class="toggle" id="spawns-toggle" title="Show PMC spawn points">Spawns</button>
+      </span>
       <button class="toggle" id="pin-toggle" title="Keep this window on top of the game">Pin</button>
     </header>
 
@@ -70,10 +77,14 @@
         <section class="tab" id="tab-settings" hidden></section>
       </aside>
     </div>
+    <div id="view-ammo" class="view" hidden></div>
+    <div id="view-guns" class="view" hidden></div>
     <div id="toasts"></div>
 
     <script src="../../node_modules/leaflet/dist/leaflet.js"></script>
     <script src="planner.js"></script>
+    <script src="armory.js"></script>
+    <script src="armoryViews.js"></script>
     <script src="mapView.js"></script>
     <script src="app.js"></script>
   </body>

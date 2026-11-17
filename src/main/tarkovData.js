@@ -2,6 +2,7 @@
 // Downloads and caches quest + map data from tarkov.dev (https://tarkov.dev, community API).
 const fs = require('fs');
 const path = require('path');
+const { buildArmory } = require('./armoryData');
 
 const JSON_BASE = 'https://json.tarkov.dev';
 const MAPS_CONFIG_URL = 'https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/src/data/maps.json';
@@ -89,6 +90,17 @@ class TarkovData {
     model.stale = [tasks, maps].some((r) => r.stale);
     this.models.set(dataMode, model);
     return model;
+  }
+
+  /** Ammo, weapons and attachments with where to get them (see armoryData.js). */
+  async armory(dataMode, { force = false } = {}) {
+    this.armories = this.armories || new Map();
+    if (!force && this.armories.has(dataMode)) return this.armories.get(dataMode);
+    const get = (p) => this.cachedJson(`${JSON_BASE}/${dataMode}/${p}`, `${dataMode}_${p}.json`, { force });
+    const [items, itemsEn, barters, traders, tradersEn] = await Promise.all([get('items'), get('items_en'), get('barters'), get('traders'), get('traders_en')]);
+    const armory = buildArmory({ dataMode, items: items.json, itemsEn: itemsEn.json, barters: barters.json, traders: traders.json, tradersEn: tradersEn.json });
+    this.armories.set(dataMode, armory);
+    return armory;
   }
 
   /** Map SVG text, cached on disk. Only tarkov.dev hosts are allowed. */

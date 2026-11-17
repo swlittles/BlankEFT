@@ -9,6 +9,10 @@ A Windows desktop companion for Escape from Tarkov that:
 
 - **Plans a raid.** In the **Raid plan** tab, tick the quests you'll do this raid. Then pick a start (a PMC spawn, or your screenshot position) and an extract. The map shows only those quests plus a numbered route. The tab also lists what to bring: keys, items to plant or use, required weapons and gear, quest items you should already carry, and found-in-raid items to watch for.
 
+- **Ammo chart (Ammo tab):** every round, by caliber or by weapon. Shows damage, penetration, armor damage, fragmentation, speed, recoil, accuracy and bleed, plus a 0–6 rating against armor classes 1–6. A "Get it" column shows the cheapest way to buy each round with *your* trader levels, finished quests and flea access. The chart badges the best-penetration round you can get and the round with the most flesh damage.
+- **Gunsmith tab:** picks attachments for any weapon to reach the lowest recoil (meta), a balanced build, or the best ergonomics. Choose "What I can get now" (your trader levels, quest unlocks, flea and barters) or "Endgame meta" (everything unlocked). Recoil and ergonomics use the game's formula, checked exactly against all 164 default presets, and respect the 100-ergonomics cap. Conflicting parts are avoided. Optics, lights and lasers are left for you to choose. It also suggests the best ammo you can get for the gun.
+- **Live position:** press your in-game screenshot key during a raid and an arrow shows where you are and which way you're facing. The arrow direction was checked against 209 pairs of real screenshots and on every map rotation.
+
 PvE, PvP and PvP Season each keep separate progress and their own prestige level, the same way the game does. PvE is shown by default. Switch with **Mode** in the top bar, or pick "Follow the game".
 
 - **Prestige:** each prestige resets quest progress. The app finds prestiges in the backend log (`/client/prestige/obtain`), counts only quest events after your latest one, and shows your level (0–6). If you prestiged before your logs begin, set your level in Settings.

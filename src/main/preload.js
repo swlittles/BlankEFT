@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('tqm', {
   getState: () => ipcRenderer.invoke('state:get'),
   getData: (opts) => ipcRenderer.invoke('data:get', opts || {}),
   getSvg: (url) => ipcRenderer.invoke('svg:get', url),
+  getArmory: (opts) => ipcRenderer.invoke('armory:get', opts || {}),
   setTask: (taskId, status) => ipcRenderer.invoke('task:set', { taskId, status }),
   setObjective: (objectiveId, done) => ipcRenderer.invoke('objective:set', { objectiveId, done }),
   setProfile: (patch) => ipcRenderer.invoke('profile:set', patch),

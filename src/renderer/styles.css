@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --bg: #121417;
   --panel: #1a1d22;
   --panel-2: #22262c;
@@ -238,3 +239,83 @@ ul.anywhere { margin: 4px 0 8px; padding-left: 18px; }
 .wipe-box { border: 1px solid #5a2e2e; border-radius: 6px; padding: 6px 10px 10px; margin: 6px 0; }
 .wipe-modes { display: flex; gap: 12px; flex-wrap: wrap; }
 .wipe-modes .row { margin: 4px 0; }
+
+/* Views: Map / Ammo / Gunsmith */
+body:not([data-view='map']) .map-only { display: none !important; }
+body[data-view] .map-ctls { display: contents; }
+.map-ctls { display: contents; }
+.seg.views button { padding: 4px 14px; font-weight: 600; }
+.view { height: calc(100% - 48px); display: flex; flex-direction: column; overflow: hidden; }
+.pad { padding: 12px; }
+.progress-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); font-size: 12px; }
+.progress-panel .pp-title { font-weight: 700; color: var(--accent); margin-right: 4px; }
+.progress-panel label { display: flex; align-items: center; gap: 4px; color: var(--muted); }
+.progress-panel input[type='number'] { width: 56px; padding: 2px 6px; }
+.progress-panel select { padding: 1px 4px; font-size: 12px; }
+.progress-panel select.set { border-color: var(--accent); }
+.progress-panel .chk { color: var(--text); }
+.split { flex: 1; display: flex; min-height: 0; }
+.side-list { width: 210px; flex: none; overflow-y: auto; padding: 8px; border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; gap: 2px; }
+.side-list h4 { margin: 10px 4px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.side-list input { margin-bottom: 6px; }
+button.cal { display: flex; justify-content: space-between; text-align: left; background: none; border-color: transparent; padding: 4px 8px; }
+button.cal span { color: var(--muted); font-size: 11px; }
+button.cal.active { background: #3a3424; border-color: #6b5c37; color: #f6e7bd; }
+.main-pane { flex: 1; overflow: auto; padding: 0 14px 14px; min-width: 0; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 0; position: sticky; top: 0; background: var(--bg); z-index: 2; }
+.toolbar h2 { margin: 0 8px 0 0; font-size: 18px; }
+.toolbar input[type='search'] { width: 200px; }
+.toolbar select { max-width: 260px; }
+.chk { display: flex; align-items: center; gap: 6px; }
+
+/* Ammo table */
+.ammo-table, .parts { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.ammo-table th, .parts th { position: sticky; top: 52px; background: var(--panel); text-align: left; padding: 6px; border-bottom: 1px solid var(--line); cursor: pointer; white-space: nowrap; color: var(--muted); font-weight: 600; z-index: 1; }
+.parts th { top: 0; cursor: default; }
+.ammo-table th.desc::after { content: ' ▼'; color: var(--accent); }
+.ammo-table th.asc::after { content: ' ▲'; color: var(--accent); }
+.ammo-table th.cls { text-align: center; width: 30px; }
+.ammo-table td, .parts td { padding: 5px 6px; border-bottom: 1px solid #23272d; vertical-align: middle; }
+.ammo-table tr:hover td, .parts tr:hover td { background: #1b1e23; }
+.ammo-table td.name, .parts td.name { display: flex; align-items: center; gap: 8px; min-width: 220px; }
+.ammo-table td.name img, .parts td.name img { width: 36px; height: 36px; object-fit: contain; background: #0f1113; border-radius: 4px; flex: none; }
+.ammo-table td.pen { font-weight: 700; color: #f6e7bd; }
+.ammo-table tr.unavail td, .parts tr.unavail td { opacity: 0.55; }
+.ammo-table tr.unavail td:last-child, .parts tr.unavail td:last-child { opacity: 1; }
+td.cls { text-align: center; font-weight: 700; color: #111; }
+td.cls.r0 { background: #3a2222; color: #b77; }
+td.cls.r1 { background: #6b2b2b; color: #f0caca; }
+td.cls.r2 { background: #8a4a2a; color: #fde3cf; }
+td.cls.r3 { background: #a08431; }
+td.cls.r4 { background: #9cad3b; }
+td.cls.r5 { background: #6cb04a; }
+td.cls.r6 { background: #3f9d58; }
+.good { color: #8fd17f; }
+.bad { color: #e58b8b; }
+.src { font-size: 12px; }
+.src.ok { color: #cfe8c6; }
+.src.src-flea { color: #bfe0f5; }
+.src.src-barter { color: #e2cdf5; }
+.src.no { color: #e58b8b; }
+.badge-best, .badge-flesh { font-size: 10px; padding: 0 6px; border-radius: 999px; margin-left: 4px; white-space: nowrap; }
+.badge-best { background: #3a3424; color: #f6e7bd; border: 1px solid #6b5c37; }
+.badge-flesh { background: #3a2424; color: #f3c0c0; border: 1px solid #6b3737; }
+
+/* Gunsmith */
+.gun-head { display: flex; gap: 16px; align-items: center; padding: 12px 0 0; }
+.gun-head img { width: 220px; max-height: 120px; object-fit: contain; background: #0f1113; border-radius: 8px; padding: 6px; }
+.gun-head h2 { margin: 0 0 4px; }
+.gun-head .small-btn { margin-top: 6px; }
+.stats { display: flex; flex-wrap: wrap; gap: 10px; margin: 6px 0 12px; }
+.stat { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; min-width: 130px; }
+.stat .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.stat .value { font-size: 24px; font-weight: 700; }
+.stat .value.small-value { font-size: 15px; padding: 5px 0; }
+.stat span { font-size: 11px; }
+.stat.endgame { border-color: #6b5c37; }
+.parts td.slot { color: var(--muted); white-space: nowrap; }
+.warn-box { background: #3a2424; border: 1px solid #6b3737; color: #f3c0c0; padding: 8px 10px; border-radius: 6px; }
+.gunsmith h3 { margin: 18px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); }
+.ammo-picks { display: flex; gap: 8px; flex-wrap: wrap; }
+.ammo-picks .need { min-width: 220px; }
+.ammo-picks img { width: 32px; height: 32px; object-fit: contain; }
