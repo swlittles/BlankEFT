@@ -7,7 +7,9 @@ const AV = {
   dataMode: null,
   loading: null,
   ammo: { caliber: null, search: '', sort: 'pen', dir: -1, onlyMine: false, weaponId: '' },
-  guns: { weaponId: null, search: '', goal: 'meta', scope: 'mine' },
+  // active: id of the saved build being shown (null = computed); tree: the build being shown/edited
+  // (null = computed); dirty: edited since it was computed/loaded; naming: inline name box state.
+  guns: { weaponId: null, search: '', goal: 'meta', scope: 'mine', active: null, tree: null, dirty: false, naming: null, showEmpty: false },
 };
 
 const CUR = { RUB: '₽', USD: '$', EUR: '€' };
@@ -262,6 +264,19 @@ function wireAmmo() {
 }
 
 // ------------------------------------------------------------------ gunsmith
+// Computed builds are cached: the screen redraws on every app update and solving can take ~0.5 s.
+const buildCache = new Map();
+function cachedOptimize(weaponId, ctx, goal) {
+  const sig = ctx.unlimited
+    ? 'all'
+    : JSON.stringify([ctx.playerLevel, ctx.traderLevels, ctx.useFlea, ctx.useBarters, [...ctx.completedTasks].sort().join(',')]);
+  const key = `${AV.dataMode}|${weaponId}|${goal}|${sig}`;
+  if (!buildCache.has(key)) {
+    if (buildCache.size > 60) buildCache.clear();
+    buildCache.set(key, Armory.optimizeBuild(AV.armory, weaponId, ctx, goal));
+  }
+  return buildCache.get(key);
+}
 function statCell(label, value, compare, lowerBetter) {
   let delta = '';
   if (compare != null && compare !== value) {
@@ -288,8 +303,44 @@ function renderGuns() {
   }
   const ctx = availabilityCtx();
   const w = AV.armory.weapons.find((x) => x.id === st.weaponId);
-  const build = Armory.optimizeBuild(AV.armory, w.id, st.scope === 'all' ? { unlimited: true } : ctx, st.goal);
-  const endgame = st.scope === 'mine' ? Armory.optimizeBuild(AV.armory, w.id, { unlimited: true }, st.goal) : null;
+  const evalCtx = st.scope === 'all' ? { unlimited: true } : ctx;
+  const saved = S.state.builds?.[w.id] || [];
+  const activeSaved = saved.find((b) => b.id === st.active) || null;
+  if (st.active && !activeSaved) Object.assign(st, { active: null, tree: null, dirty: false });
+  const computed = st.tree ? null : cachedOptimize(w.id, evalCtx, st.goal);
+  const build = st.tree ? { ...Armory.evaluateTree(AV.armory, w.id, st.tree, evalCtx), missing: [] } : computed;
+  AV.guns.shownTree = build.tree; // what the part pickers edit
+  const endgame = st.scope === 'mine' ? cachedOptimize(w.id, { unlimited: true }, st.goal) : null;
+  const empty = Armory.emptySlots(AV.armory, w.id, build.tree);
+  const itemName = (id) => AV.armory.mods[id]?.shortName || AV.armory.weapons.find((x) => x.id === id)?.shortName || '';
+  const pct = (r) => (r ? `${r > 0 ? '+' : ''}${Math.round(r * 1000) / 10}%` : '0%');
+  const optionList = (parentId, slotId, selected, allowEmpty) =>
+    (allowEmpty ? `<option value="">${selected ? '— Remove part —' : '— Empty —'}</option>` : '') +
+    Armory.slotOptions(AV.armory, parentId, slotId, evalCtx)
+      .map((o) => `<option value="${o.mod.id}" ${o.mod.id === selected ? 'selected' : ''}>${escapeHtml(o.mod.shortName)} · recoil ${pct(o.mod.recoil)} · ergo ${o.mod.ergo > 0 ? '+' : ''}${o.mod.ergo}${o.avail.ok ? '' : ' · 🔒 ' + escapeHtml(o.avail.why)}</option>`)
+      .join('');
+  const savedStats = (b) => Armory.evaluateTree(AV.armory, w.id, b.tree, evalCtx).stats;
+  const naming = st.naming;
+  const buildsBar = `<div class="builds-bar">
+    <span class="bb-title">Builds</span>
+    <button class="build-chip ${!st.tree ? 'active' : ''}" data-build="computed" title="Worked out for you from the goal above">⚙ ${escapeHtml(Armory.GOALS[st.goal].label)}</button>
+    ${saved
+      .map((b) => {
+        const s = savedStats(b);
+        return `<button class="build-chip ${st.active === b.id ? 'active' : ''}" data-build="${b.id}" title="Saved ${escapeHtml(new Date(b.updatedAt).toLocaleString())}">💾 ${escapeHtml(b.name)}${st.active === b.id && st.dirty ? ' •' : ''}<span>${s.recoilV}/${s.recoilH} · ergo ${s.ergo}</span></button>`;
+      })
+      .join('')}
+    ${st.tree && !st.active ? '<span class="build-chip active edited">✎ Edited, not saved</span>' : ''}
+    <span class="spacer"></span>
+    ${
+      naming
+        ? `<input id="build-name" maxlength="60" value="${escapeHtml(naming.value)}" placeholder="Build name"><button class="primary small-btn" data-bact="name-ok">${naming.kind === 'rename' ? 'Rename' : 'Save'}</button><button class="small-btn" data-bact="name-cancel">Cancel</button>`
+        : `${activeSaved && st.dirty ? '<button class="primary small-btn" data-bact="update">💾 Save changes</button>' : ''}
+           <button class="small-btn" data-bact="save-new">💾 Save as new</button>
+           ${activeSaved ? '<button class="small-btn" data-bact="rename">Rename</button><button class="small-btn danger" data-bact="delete">Delete</button>' : ''}
+           ${st.tree ? '<button class="small-btn" data-bact="reset" title="Throw away edits and show the computed build">↺ Computed build</button>' : ''}`
+    }
+  </div>`;
   const gunAvail = Armory.bestSource(w.sources, ctx);
   const ammo = w.allowedAmmo
     .map((id) => AV.ammoById[id])
@@ -329,6 +380,7 @@ function renderGuns() {
           <button data-scope="all" class="${st.scope === 'all' ? 'active' : ''}" title="Every part, as if all traders are LL4 and every quest is done">Endgame meta</button>
         </div>
       </div>
+      ${buildsBar}
       <div class="stats">
         ${statCell('Vertical recoil', build.stats.recoilV, stock?.recoilV, true)}
         ${statCell('Horizontal recoil', build.stats.recoilH, stock?.recoilH, true)}
@@ -336,6 +388,7 @@ function renderGuns() {
         <div class="stat"><div class="label">Parts cost</div><div class="value small-value">${costs || '–'}</div>${build.parts.some((p) => p.avail.source?.kind === 'barter') ? '<span class="muted">+ barters</span>' : ''}</div>
         ${endgame ? `<div class="stat endgame"><div class="label">Endgame meta</div><div class="value small-value">${endgame.stats.recoilV} / ${endgame.stats.recoilH} · ergo ${endgame.stats.ergo}</div><span class="muted">vertical / horizontal</span></div>` : ''}
       </div>
+      ${build.conflicts ? '<p class="warn-box">Some parts in this build can\'t be fitted together (marked ⚠). Change one of them.</p>' : ''}
       ${build.missing.length ? `<p class="warn-box">You can't get a required part yet (${escapeHtml(build.missing.join(', '))}). The best one is shown anyway, marked in red.</p>` : ''}
       <table class="parts">
         <thead><tr><th>Slot</th><th>Part</th><th title="Ergonomics">Ergo</th><th title="Recoil modifier">Recoil</th><th>Get it</th></tr></thead>
@@ -343,13 +396,29 @@ function renderGuns() {
           .map(
             (p) => `<tr class="${p.avail.ok ? '' : 'unavail'}">
             <td class="slot" style="padding-left:${8 + p.depth * 16}px">${p.depth ? '└ ' : ''}${escapeHtml(p.slot)}</td>
-            <td class="name"><img src="${escapeHtml(p.mod.icon)}" alt="" loading="lazy"><span title="${escapeHtml(p.mod.name)}">${escapeHtml(p.mod.shortName)}</span></td>
+            <td class="name"><img src="${escapeHtml(p.mod.icon)}" alt="" loading="lazy"><div class="part-cell"><select class="part-pick" data-path="${escapeHtml(p.path)}" title="${escapeHtml(p.mod.name)}: change or remove this part">${optionList(p.parentId, p.slotId, p.mod.id, !p.required)}</select>${p.conflictsWith.length ? `<div class="conf">⚠ Can't be fitted with ${escapeHtml(p.conflictsWith.join(', '))}</div>` : ''}</div></td>
             <td class="${p.mod.ergo > 0 ? 'good' : p.mod.ergo < 0 ? 'bad' : ''}">${p.mod.ergo ? (p.mod.ergo > 0 ? '+' : '') + p.mod.ergo : '–'}</td>
             <td class="${p.mod.recoil < 0 ? 'good' : p.mod.recoil > 0 ? 'bad' : ''}">${p.mod.recoil ? `${p.mod.recoil > 0 ? '+' : ''}${Math.round(p.mod.recoil * 1000) / 10}%` : '–'}</td>
             <td>${sourceLabel(p.avail)}</td></tr>`
           )
           .join('')}</tbody>
       </table>
+      ${
+        empty.length
+          ? `<button class="small-btn" data-bact="toggle-empty">${st.showEmpty ? '▾ Hide' : '▸ Show'} ${empty.length} empty slot${empty.length > 1 ? 's' : ''} you could add parts to</button>
+      ${
+        st.showEmpty
+          ? `<table class="parts empty-slots"><tbody>${empty
+              .map(
+                (s) => `<tr><td class="slot" style="padding-left:${8 + s.depth * 16}px">${s.depth ? '└ ' : ''}${escapeHtml(s.name)} <span class="muted small">on ${escapeHtml(itemName(s.parentId))}</span></td>
+                <td class="name"><select class="part-pick" data-path="${escapeHtml(s.path)}">${optionList(s.parentId, s.slotId, null, true).replace('— Empty —', '— Add a part —')}</select></td></tr>`
+              )
+              .join('')}</tbody></table>`
+          : ''
+      }`
+          : ''
+      }
+      <p class="muted small">Pick a different part in any slot and its own attachments are filled in for the goal above. Then save it as one of your builds. 🔒 = you can't get it yet.</p>
       <p class="muted small">Optics, lights and lasers are up to you, so they're left off. Recoil and ergonomics use the game's own formula (checked against all 164 default presets). "Meta" means the lowest recoil the parts allow, not a list copied from streamers.</p>
       <h3>Best ammo you can get for it</h3>
       ${
@@ -362,13 +431,95 @@ function renderGuns() {
   </div>`;
 }
 
+function discardEditsOk() {
+  return !AV.guns.dirty || confirm('You have unsaved changes to this build. Throw them away?');
+}
+
+function defaultBuildName(w) {
+  const n = (S.state.builds?.[w.id] || []).length + 1;
+  return `${w.shortName} ${Armory.GOALS[AV.guns.goal].label.replace(/ \(meta\)/, '')} #${n}`;
+}
+
+async function buildAction(act) {
+  const st = AV.guns;
+  const w = AV.armory.weapons.find((x) => x.id === st.weaponId);
+  const saved = S.state.builds?.[w.id] || [];
+  const activeSaved = saved.find((b) => b.id === st.active);
+  if (act === 'save-new') st.naming = { kind: 'new', value: activeSaved ? `${activeSaved.name} (copy)` : defaultBuildName(w) };
+  else if (act === 'rename') st.naming = { kind: 'rename', value: activeSaved.name };
+  else if (act === 'name-cancel') st.naming = null;
+  else if (act === 'name-ok') {
+    const name = (document.getElementById('build-name')?.value || st.naming.value || '').trim() || defaultBuildName(w);
+    if (st.naming.kind === 'rename') await window.tqm.saveBuild(w.id, { id: st.active, name });
+    else {
+      const tree = st.shownTree;
+      st.active = await window.tqm.saveBuild(w.id, { name, goal: st.goal, tree });
+      st.tree = tree;
+      st.dirty = false;
+    }
+    st.naming = null;
+    toast(`Saved "${name}"`, 'ok');
+  } else if (act === 'update') {
+    await window.tqm.saveBuild(w.id, { id: st.active, name: activeSaved.name, tree: st.tree });
+    st.dirty = false;
+    toast(`Saved changes to "${activeSaved.name}"`, 'ok');
+  } else if (act === 'delete') {
+    if (!confirm(`Delete the build "${activeSaved.name}"?`)) return;
+    await window.tqm.deleteBuild(w.id, st.active);
+    Object.assign(st, { active: null, tree: null, dirty: false });
+    toast(`Deleted "${activeSaved.name}"`);
+  } else if (act === 'reset') {
+    if (!discardEditsOk()) return;
+    Object.assign(st, { active: null, tree: null, dirty: false });
+  } else if (act === 'toggle-empty') st.showEmpty = !st.showEmpty;
+  renderGuns();
+  if (st.naming) {
+    const input = document.getElementById('build-name');
+    input?.focus();
+    input?.select();
+  }
+}
+
 function wireGuns() {
   const el = $('#view-guns');
   wireProgressPanel(el);
+  el.addEventListener('change', (e) => {
+    const sel = e.target.closest('.part-pick');
+    if (!sel) return;
+    const st = AV.guns;
+    const ctx = st.scope === 'all' ? { unlimited: true } : availabilityCtx();
+    st.tree = Armory.setPart(AV.armory, st.weaponId, st.shownTree, sel.dataset.path, sel.value || null, ctx, st.goal);
+    st.dirty = true;
+    renderGuns();
+  });
+  el.addEventListener('keydown', (e) => {
+    if (e.target.id !== 'build-name') return;
+    if (e.key === 'Enter') buildAction('name-ok');
+    if (e.key === 'Escape') buildAction('name-cancel');
+  });
+  el.addEventListener('input', (e) => {
+    if (e.target.id === 'build-name' && AV.guns.naming) AV.guns.naming.value = e.target.value;
+  });
   el.addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
-    if (b.dataset.gun) AV.guns.weaponId = b.dataset.gun;
+    if (b.dataset.bact) return buildAction(b.dataset.bact);
+    if (b.dataset.build) {
+      const st = AV.guns;
+      if (b.dataset.build === (st.active || (st.tree ? '' : 'computed'))) return;
+      if (!discardEditsOk()) return;
+      if (b.dataset.build === 'computed') Object.assign(st, { active: null, tree: null, dirty: false });
+      else {
+        const sb = (S.state.builds?.[st.weaponId] || []).find((x) => x.id === b.dataset.build);
+        Object.assign(st, { active: sb.id, tree: JSON.parse(JSON.stringify(sb.tree)), dirty: false });
+      }
+      st.naming = null;
+      return renderGuns();
+    }
+    if (b.dataset.gun) {
+      if (b.dataset.gun === AV.guns.weaponId || !discardEditsOk()) return;
+      Object.assign(AV.guns, { weaponId: b.dataset.gun, active: null, tree: null, dirty: false, naming: null });
+    }
     else if (b.dataset.goal) AV.guns.goal = b.dataset.goal;
     else if (b.dataset.scope) AV.guns.scope = b.dataset.scope;
     else if (b.dataset.link) return window.tqm.openLink(b.dataset.link);

@@ -77,3 +77,33 @@ test('optimizer: best available parts, keeps magazine size, resolves conflicts',
   const all = optimizeBuild(armory, 'gun', { unlimited: true }, 'meta');
   assert.ok(all.parts.some((p) => p.mod.id === 'bigBrake'));
 });
+
+test('editing a build: swap auto-fills the new part, remove empties the slot, original untouched', () => {
+  const { setPart, evaluateTree, emptySlots, slotOptions } = require('../src/renderer/armory');
+  const armory = fixture();
+  const b = optimizeBuild(armory, 'gun', { unlimited: true }, 'meta');
+  // swap the stock out, then put the handguard back (its foregrip gets auto-filled again)
+  const noStock = setPart(armory, 'gun', b.tree, 'mod_stock', null, { unlimited: true });
+  assert.ok(!evaluateTree(armory, 'gun', noStock, { unlimited: true }).parts.some((p) => p.mod.id === 'stockA'));
+  assert.ok(emptySlots(armory, 'gun', noStock).some((s) => s.path === 'mod_stock'));
+  const withHg = setPart(armory, 'gun', noStock, 'mod_handguard', 'hg', { unlimited: true });
+  const e = evaluateTree(armory, 'gun', withHg, { unlimited: true });
+  assert.ok(e.parts.some((p) => p.path === 'mod_handguard/mod_foregrip' && p.mod.id === 'fg'), 'foregrip auto-filled');
+  assert.strictEqual(e.conflicts, 0);
+  // the original build is unchanged
+  assert.ok(evaluateTree(armory, 'gun', b.tree, { unlimited: true }).parts.some((p) => p.mod.id === 'stockA'));
+  // options are sorted best recoil first
+  assert.deepStrictEqual(slotOptions(armory, 'gun', 'mod_muzzle', { unlimited: true }).map((o) => o.mod.id), ['bigBrake', 'brake']);
+});
+
+test('conflicts in a hand-made build are reported', () => {
+  const { setPart, evaluateTree } = require('../src/renderer/armory');
+  const armory = fixture();
+  let tree = setPart(armory, 'gun', [], 'mod_stock', 'stockA', { unlimited: true });
+  tree = setPart(armory, 'gun', tree, 'mod_handguard', 'hg', { unlimited: true });
+  // the optimizer would skip the foregrip because of the stock, so add it by hand
+  tree = setPart(armory, 'gun', tree, 'mod_handguard/mod_foregrip', 'fg', { unlimited: true });
+  const e = evaluateTree(armory, 'gun', tree, { unlimited: true });
+  assert.strictEqual(e.conflicts, 2);
+  assert.ok(e.parts.find((p) => p.mod.id === 'fg').conflictsWith.includes('stockA'));
+});

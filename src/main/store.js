@@ -20,6 +20,8 @@ const DEFAULTS = {
   },
   // per session mode ('pve' | 'regular' | 'pvpseason')
   profiles: {},
+  // saved weapon builds, shared by every mode: { [weaponId]: [{ id, name, goal, tree, createdAt, updatedAt }] }
+  builds: {},
 };
 
 function emptyProfile() {

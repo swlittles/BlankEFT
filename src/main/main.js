@@ -249,6 +249,7 @@ async function buildState() {
     profile: profileSummary(mode),
     objectivesDone: store.profile(mode).objectivesDone,
     plans: store.profile(mode).plans,
+    builds: store.data.builds || {},
     taskStates,
   };
 }
@@ -297,6 +298,46 @@ function registerIpc() {
       if (done) p.objectivesDone[objectiveId] = true;
       else delete p.objectivesDone[objectiveId];
     });
+    pushState();
+  });
+
+  // Saved weapon builds. A build is a tree of { slot, mod, children } nodes.
+  const ID = /^[0-9a-f]{24}$/i;
+  const cleanTree = (nodes, depth = 0, count = { n: 0 }) => {
+    if (!Array.isArray(nodes) || depth > 12) return [];
+    const out = [];
+    for (const n of nodes) {
+      if (++count.n > 300) break;
+      if (!n || typeof n.slot !== 'string' || n.slot.length > 64 || !ID.test(n.mod)) continue;
+      out.push({ slot: n.slot, mod: n.mod, children: cleanTree(n.children, depth + 1, count) });
+    }
+    return out;
+  };
+  ipcMain.handle('builds:save', (_e, { weaponId, build }) => {
+    if (!ID.test(weaponId) || !build) return null;
+    const builds = (store.data.builds ||= {});
+    const list = (builds[weaponId] ||= []);
+    const now = Date.now();
+    const name = String(build.name || 'My build').trim().slice(0, 60) || 'My build';
+    const existing = build.id && list.find((b) => b.id === build.id);
+    if (existing) {
+      existing.name = name;
+      if (build.tree) existing.tree = cleanTree(build.tree);
+      if (build.goal) existing.goal = String(build.goal).slice(0, 20);
+      existing.updatedAt = now;
+    } else {
+      list.push({ id: `b${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, goal: String(build.goal || '').slice(0, 20), tree: cleanTree(build.tree), createdAt: now, updatedAt: now });
+    }
+    store.save();
+    pushState();
+    return existing ? existing.id : list[list.length - 1].id;
+  });
+  ipcMain.handle('builds:delete', (_e, { weaponId, id }) => {
+    const list = store.data.builds?.[weaponId];
+    if (!list) return;
+    store.data.builds[weaponId] = list.filter((b) => b.id !== id);
+    if (!store.data.builds[weaponId].length) delete store.data.builds[weaponId];
+    store.save();
     pushState();
   });
 

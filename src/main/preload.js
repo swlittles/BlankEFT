@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('tqm', {
   setObjective: (objectiveId, done) => ipcRenderer.invoke('objective:set', { objectiveId, done }),
   setProfile: (patch) => ipcRenderer.invoke('profile:set', patch),
   setPlan: (mapId, plan) => ipcRenderer.invoke('plan:set', { mapId, plan }),
+  saveBuild: (weaponId, build) => ipcRenderer.invoke('builds:save', { weaponId, build }),
+  deleteBuild: (weaponId, id) => ipcRenderer.invoke('builds:delete', { weaponId, id }),
   resetManual: () => ipcRenderer.invoke('profile:resetManual'),
   wipe: (modes, time, resetPrestige) => ipcRenderer.invoke('profile:wipe', { modes, time, resetPrestige }),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
