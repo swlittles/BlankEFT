@@ -383,6 +383,8 @@ function renderHere() {
   }
   const markerCount = markerEntries(S.mapId).length;
   let html = `<div class="here-head"><h2>${escapeHtml(map.name)}</h2><span class="muted small">${markerCount} marker${markerCount === 1 ? '' : 's'} shown</span></div>`;
+  const plan = getPlan();
+  const planIds = new Set(plan.tasks);
   for (const [status, tasks] of Object.entries(groups)) {
     tasks.sort((a, b) => a.trader.name.localeCompare(b.trader.name) || a.name.localeCompare(b.name));
     html += `<h3 class="group-title status-${status}">${STATUS_LABEL[status]} <span class="count">${tasks.length}</span></h3>`;
@@ -390,10 +392,11 @@ function renderHere() {
     for (const t of tasks) {
       const objs = t.objectives.filter((o) => objectiveOnMap(o, S.mapId));
       const hasMarkers = objs.some((o) => o.zones.some((z) => z.map === S.mapId) || o.possibleLocations.some((l) => l.map === S.mapId));
-      html += `<div class="quest-card status-${status}" data-task="${t.id}">
+      const inPlan = planIds.has(t.id);
+      html += `<div class="quest-card status-${status}${inPlan ? ' in-plan' : ''}" data-task="${t.id}">
         <div class="qc-head">
           <button class="link qc-name" data-act="focus" ${hasMarkers ? '' : 'disabled title="No map markers for this quest"'}>${escapeHtml(t.name)}</button>
-          <span class="trader">${escapeHtml(t.trader.name)}</span>
+          ${inPlan ? '<span class="plan-chip" title="This quest is in your raid plan for this map">✓ Raid plan</span>' : ''}<span class="trader">${escapeHtml(t.trader.name)}</span>
         </div>
         <div class="qc-unlocks">${unlockBadges(t)}
         </div>
@@ -404,7 +407,7 @@ function renderHere() {
           })
           .join('')}</ul>
         <div class="qc-actions">
-          <button data-act="plan" class="${getPlan().tasks.includes(t.id) ? 'planned' : ''}">${getPlan().tasks.includes(t.id) ? '✓ In raid plan' : '+ Plan'}</button>
+          <button data-act="plan" class="${inPlan ? 'planned' : ''}" title="${inPlan ? 'Remove from the raid plan' : 'Add to the raid plan for this map'}">${inPlan ? '✓ In raid plan' : '+ Plan'}</button>
           <button data-act="details" title="Pictures of the quest, its items, keys and rewards">🖼 Details</button>
           ${status === 'available' ? '<button data-act="start">Mark started</button>' : ''}
           ${t.wikiLink ? '<button data-act="wiki">Wiki</button>' : ''}

@@ -332,12 +332,12 @@ button.mark-complete:hover:not(:disabled) { background: #22331f; border-style: s
 .quest-tools select { max-width: 150px; }
 
 /* Quest details panel */
-#modal { position: fixed; inset: 0; z-index: 3000; background: rgba(0, 0, 0, 0.65); display: grid; place-items: center; padding: 24px; }
-.modal-card { width: min(880px, 100%); max-height: 100%; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6); }
+#modal { position: fixed; inset: 0; z-index: 3000; background: rgba(0, 0, 0, 0.65); display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; }
+.modal-card { width: min(880px, 100%); max-height: calc(100vh - 48px); min-height: 0; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6); }
 .modal-card header { display: flex; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
 .modal-card header h2 { margin: 0 0 4px; font-size: 20px; }
 .modal-card .close { border: 0; background: none; font-size: 18px; color: var(--muted); }
-.modal-body { overflow-y: auto; padding: 4px 16px 16px; }
+.modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px 16px 16px; }
 .modal-body h3 { margin: 18px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); }
 .modal-card footer { display: flex; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--line); }
 .modal-card footer .spacer { flex: 1; }
@@ -471,3 +471,9 @@ ol.route li .icon-btn:hover { color: #9fe07a; }
 .route-badge.stop { cursor: pointer; }
 .spawn-marker.spawn-scav span { border-color: #4f7a2f; }
 .spawn-marker.spawn-scav:hover span { background: #9fe07a; }
+
+/* Quests in the raid plan: whole card goes blue so it stands out from the rest */
+.quest-card.in-plan { background: #1b2a3a; border-color: #3d8bfd; border-left: 3px solid #3d8bfd; box-shadow: 0 0 0 1px rgba(61, 139, 253, 0.35), 0 0 12px rgba(61, 139, 253, 0.18); }
+.quest-card.in-plan .qc-name { color: #cfe3ff; }
+.plan-chip { margin-left: auto; margin-right: 6px; padding: 1px 7px; border-radius: 10px; background: #3d8bfd; color: #fff; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.quest-card.in-plan button.planned { background: #3d8bfd; border-color: #3d8bfd; color: #fff; }

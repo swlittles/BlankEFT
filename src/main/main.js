@@ -443,7 +443,7 @@ function registerIpc() {
 function createWindow() {
   win = new BrowserWindow({
     width: Number(process.env.TQM_WIDTH) || 1500, // TQM_WIDTH: dev aid for testing layouts
-    height: 950,
+    height: Number(process.env.TQM_HEIGHT) || 950, // TQM_HEIGHT: same, for short windows
     minWidth: 900,
     minHeight: 600,
     backgroundColor: '#14161a',
