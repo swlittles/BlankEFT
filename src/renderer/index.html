@@ -41,6 +41,7 @@
       <button class="toggle" id="extracts-toggle" title="Show extracts">Extracts</button>
       <button class="toggle" id="spawns-toggle" title="Show PMC spawn points">Spawns</button>
       <button class="toggle" id="locks-toggle" title="Show locked rooms and car trunks, and which key opens each">🔑 Keys</button>
+      <button class="toggle" id="loot-toggle" title="Show loot containers: weapon boxes, ammo boxes, bodies, safes and more">📦 Loot</button>
       </span>
       <button class="toggle" id="pin-toggle" title="Keep this window on top of the game">Pin</button>
       </div>
@@ -58,6 +59,7 @@
           <label><input type="checkbox" data-faction="shared"> <span class="lg-dot faction-shared"></span>Both</label>
           <div class="legend-kinds" title="Special extract types">🗝️ Secret · 🎆 Flare · 🤝 Co-op<br>🚗 V-Ex · 🚂 Train · 🧗 Cliff · 🛗 Elevator</div>
         </div>
+        <div id="loot-legend" class="map-legend" hidden></div>
         <button id="sidebar-toggle" title="Hide the sidebar">›</button>
       </div>
       <aside id="sidebar">
@@ -106,6 +108,7 @@
 
     <script src="../../node_modules/leaflet/dist/leaflet.js"></script>
     <script src="planner.js"></script>
+    <script src="loot.js"></script>
     <script src="armory.js"></script>
     <script src="armoryViews.js"></script>
     <script src="mapView.js"></script>

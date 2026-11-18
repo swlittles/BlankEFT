@@ -1,5 +1,5 @@
 'use strict';
-/* global MapView, escapeHtml, Planner, ArmoryViews, AV, QuestDetails */
+/* global MapView, escapeHtml, Planner, Loot, ArmoryViews, AV, QuestDetails */
 
 const $ = (sel) => document.querySelector(sel);
 const STATUS_LABEL = { started: 'Active', available: 'Available', completed: 'Completed', failed: 'Failed', locked: 'Locked' };
@@ -14,6 +14,8 @@ const S = {
   lastRaidMap: undefined,
   taskById: new Map(),
   mapById: new Map(),
+  looted: new Map(), // mapId -> Set of hotspot ids looted this raid (Scav runs)
+  lastRaidStatus: null,
 };
 
 const mapView = new MapView($('#map'), {
@@ -22,9 +24,11 @@ const mapView = new MapView($('#map'), {
   lockPopup: buildLockPopup,
   extractPopup: buildExtractPopup,
   spawnClick: (sp) => {
-    savePlan({ start: { ...sp.position, label: 'Chosen PMC spawn' } });
+    if (isScav()) saveScav({ start: { ...sp.position, label: 'Chosen Scav spawn' } });
+    else savePlan({ start: { ...sp.position, label: 'Chosen PMC spawn' } });
     toast('Route now starts at that spawn');
   },
+  hotspotClick: (id) => toggleHotspot(id),
   floorChange: (floor) => {
     $('#floor-select').value = floor || '';
     mapView.setFloor(floor);
@@ -73,7 +77,63 @@ function taskState(id) {
 // ------------------------------------------------------------------ raid plan
 function getPlan(mapId = S.mapId) {
   const p = S.state?.plans?.[mapId];
-  return { tasks: p?.tasks || [], start: p?.start || null, extract: p?.extract || null };
+  return { type: p?.type === 'scav' ? 'scav' : 'pmc', tasks: p?.tasks || [], start: p?.start || null, extract: p?.extract || null, scav: p?.scav || null };
+}
+
+const isScav = (plan = getPlan()) => plan.type === 'scav';
+
+/** Scav-run settings for this map, with defaults filled in. */
+function scavPlan(plan = getPlan()) {
+  const s = plan.scav;
+  return {
+    start: s?.start || null,
+    extract: s?.extract || null,
+    cats: s ? s.cats || [] : Loot.LOOT_CATS.filter((c) => c.on).map((c) => c.id),
+    picks: Array.isArray(s?.picks) ? s.picks : null, // null = the app picks the stops
+    size: s?.size || 'medium',
+  };
+}
+
+function saveScav(patch) {
+  return savePlan({ scav: { ...scavPlan(), ...patch } });
+}
+
+// Loot hotspots per map + categories (clustering is cheap, but the map redraws often).
+const hotspotCache = new Map();
+function mapAreas(map) {
+  const labels = displayFor(map.id)?.labels || [];
+  if (labels.length) return labels.filter((l) => l.text && l.position).map((l) => ({ name: String(l.text).replace(/\s+/g, ' '), x: l.position[0], z: l.position[1] }));
+  return map.areas || [];
+}
+function hotspotsFor(mapId, cats) {
+  const key = `${S.dataMode}|${mapId}|${[...cats].sort().join(',')}`;
+  if (!hotspotCache.has(key)) {
+    const map = S.mapById.get(mapId);
+    const hs = Loot.lootHotspots(map?.loot || [], cats, { areas: map ? mapAreas(map) : [] });
+    // an area can hold several hotspots: number the extra ones
+    const seen = {};
+    for (const h of hs) {
+      const base = h.label || 'Loot spot';
+      seen[base] = (seen[base] || 0) + 1;
+      h.name = seen[base] > 1 ? `${base} ${seen[base]}` : base;
+    }
+    if (hotspotCache.size > 40) hotspotCache.clear();
+    hotspotCache.set(key, hs);
+  }
+  return hotspotCache.get(key);
+}
+
+function toggleHotspot(id) {
+  const r = currentRoute();
+  if (!r?.scav) return;
+  const picks = r.picked.includes(id) ? r.picked.filter((x) => x !== id) : [...r.picked, id];
+  if (S.state.settings.markerFilter !== 'plan') window.tqm.setSettings({ markerFilter: 'plan' });
+  return saveScav({ picks });
+}
+
+function lootedSet(mapId = S.mapId) {
+  if (!S.looted.has(mapId)) S.looted.set(mapId, new Set());
+  return S.looted.get(mapId);
 }
 
 function savePlan(patch) {
@@ -103,7 +163,8 @@ function routeStart() {
   const inRaid = ['inRaid', 'loading'].includes(S.state.raid?.status);
   const when = p ? new Date(p.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
   if (p && inRaid) return { position: p, label: `You, from ${p.source === 'log' ? 'the game log' : 'your screenshot'} at ${when}`, live: true };
-  if (plan.start) return { position: plan.start, label: plan.start.label || 'Start' };
+  const chosen = isScav(plan) ? scavPlan(plan).start : plan.start;
+  if (chosen) return { position: chosen, label: chosen.label || 'Start' };
   if (p) return { position: p, label: `Your last position (${when})` };
   return null;
 }
@@ -112,10 +173,41 @@ function currentRoute() {
   if (!S.data || !S.mapId) return null;
   const plan = getPlan();
   const map = S.mapById.get(S.mapId);
+  if (isScav(plan)) return scavRoute(plan, map);
   const ex = plan.extract ? map.extracts.find((e) => e.name === plan.extract) : null;
   const start = routeStart();
   const r = Planner.planRoute(plannedTasks(), S.mapId, { start: start?.position || null, end: ex?.position || null, objectivesDone: S.state.objectivesDone || {} });
   return { ...r, start: start?.position || null, startLabel: start?.label || null, startLive: !!start?.live, end: ex?.position || null, extract: ex };
+}
+
+function scavRoute(plan, map) {
+  const sp = scavPlan(plan);
+  const ex = sp.extract ? map.extracts.find((e) => e.name === sp.extract) : null;
+  const start = routeStart();
+  const hotspots = hotspotsFor(map.id, sp.cats);
+  const r = Loot.planLootRoute(hotspots, {
+    start: start?.position || null,
+    pickFrom: sp.start || null,
+    end: ex?.position || null,
+    picks: sp.picks,
+    size: sp.size,
+    looted: [...lootedSet(map.id)],
+  });
+  const inRoute = new Set(r.picked);
+  const tip = (h, action) => `<b>${escapeHtml(h.name)}</b><br><span class="tt-sub">${escapeHtml(Loot.hotspotSummary(h))}</span><br><span class="tt-sub">${action}</span>`;
+  return {
+    ...r,
+    scav: true,
+    hotspots,
+    stops: r.stops.map((s) => ({ ...s, id: s.hotspot.id, tip: tip(s.hotspot, 'Click to drop it from the route') })),
+    candidates: hotspots.filter((h) => !inRoute.has(h.id)).map((h) => ({ id: h.id, position: h.position, tip: tip(h, 'Click to add it to the route') })),
+    anywhere: [],
+    start: start?.position || null,
+    startLabel: start?.label || null,
+    startLive: !!start?.live,
+    end: ex?.position || null,
+    extract: ex,
+  };
 }
 
 function filterAllows(status) {
@@ -138,7 +230,7 @@ function markerEntries(mapId) {
   const out = [];
   const done = S.state.objectivesDone || {};
   const planOnly = S.state.settings.markerFilter === 'plan';
-  const planned = new Set(getPlan(mapId).tasks);
+  const planned = new Set(isScav(getPlan(mapId)) ? [] : getPlan(mapId).tasks);
   for (const task of S.data.tasks) {
     const state = taskState(task.id);
     if (planOnly ? !planned.has(task.id) : !filterAllows(state.status)) continue;
@@ -185,6 +277,7 @@ function renderTopbar() {
   $('#extracts-toggle').classList.toggle('active', !!st.settings.showExtracts);
   $('#spawns-toggle').classList.toggle('active', !!st.settings.showSpawns);
   $('#locks-toggle').classList.toggle('active', !!st.settings.showLocks);
+  $('#loot-toggle').classList.toggle('active', !!st.settings.showLoot);
   $('#pin-toggle').classList.toggle('active', !!st.settings.alwaysOnTop);
   applySidebar();
 
@@ -219,9 +312,43 @@ function renderMarkers() {
   mapView.setExtracts(S.mapById.get(S.mapId)?.extracts || [], S.state.settings.showExtracts, factions);
   $('#extract-legend').hidden = !S.state.settings.showExtracts;
   for (const cb of document.querySelectorAll('#extract-legend [data-faction]')) cb.checked = factions.includes(cb.dataset.faction);
-  mapView.setSpawns(S.mapById.get(S.mapId)?.pmcSpawns || [], !!S.state.settings.showSpawns);
+  const map = S.mapById.get(S.mapId);
+  const scav = isScav();
+  mapView.setSpawns((scav ? map?.scavSpawns : map?.pmcSpawns) || [], !!S.state.settings.showSpawns, scav ? 'scav' : 'pmc');
+  $('#spawns-toggle').title = scav ? 'Show Scav spawn points (this map has a Scav-run plan)' : 'Show PMC spawn points';
+  renderLoot(map);
   mapView.setLocks(lockEntries(S.mapId), !!S.state.settings.showLocks);
   mapView.setRoute(S.state.settings.markerFilter === 'plan' ? currentRoute() : null);
+}
+
+// Loot layer: a Scav-run plan on the Plan filter shows its own categories; otherwise the Loot toggle.
+function renderLoot(map) {
+  if (!map) return;
+  const scavRun = isScav() && S.state.settings.markerFilter === 'plan';
+  const cats = scavRun ? scavPlan().cats : S.state.settings.showLoot ? S.state.settings.lootCats || [] : [];
+  const sig = `${S.dataMode}|${map.id}|${[...cats].sort().join(',')}`;
+  if (mapView.lootSig !== sig) {
+    const want = new Set(cats);
+    mapView.setLoot((map.loot || []).filter((l) => want.has(l.c)));
+    mapView.lootSig = sig;
+  }
+  const legend = $('#loot-legend');
+  legend.hidden = !S.state.settings.showLoot || scavRun;
+  if (!legend.hidden) {
+    const counts = {};
+    for (const l of map.loot || []) counts[l.c] = (counts[l.c] || 0) + 1;
+    const on = new Set(S.state.settings.lootCats || []);
+    const lsig = `${map.id}|${[...on].sort().join(',')}`;
+    if (legend.dataset.sig !== lsig) {
+      legend.dataset.sig = lsig;
+      legend.innerHTML =
+        '<span class="legend-title">Loot</span>' +
+        Loot.LOOT_CATS.filter((c) => counts[c.id])
+          .map((c) => `<label title="${escapeHtml(c.hint)}"><input type="checkbox" data-loot="${c.id}" ${on.has(c.id) ? 'checked' : ''}> <span class="lg-dot" style="background:${c.color}"></span>${c.icon} ${escapeHtml(c.label)} <span class="muted">${counts[c.id]}</span></label>`)
+          .join('') +
+        '<div class="legend-kinds">Containers are fixed; what\'s inside is random.<br>Small dots are loose-loot spots.</div>';
+    }
+  }
 }
 
 function renderPosition() {
@@ -557,11 +684,81 @@ function altsHtml(alts, max = 4) {
   return shown + more;
 }
 
+function planTypeSeg(plan) {
+  return `<div class="seg plan-type" title="Plan a PMC raid around your quests, or a Scav run around loot">
+    <button data-plan-type="pmc" class="${isScav(plan) ? '' : 'active'}">PMC raid</button>
+    <button data-plan-type="scav" class="${isScav(plan) ? 'active' : ''}">Scav run</button>
+  </div>`;
+}
+
+function renderScavPlan(el, map, plan) {
+  const sp = scavPlan(plan);
+  const route = currentRoute();
+  const counts = {};
+  for (const l of map.loot || []) counts[l.c] = (counts[l.c] || 0) + 1;
+  const cats = Loot.LOOT_CATS.filter((c) => counts[c.id])
+    .map((c) => `<label class="pick loot-cat" title="${escapeHtml(c.hint)}"><input type="checkbox" data-loot-cat="${c.id}" ${sp.cats.includes(c.id) ? 'checked' : ''}/> <span class="lg-dot" style="background:${c.color}"></span><span>${c.icon} ${escapeHtml(c.label)}</span><span class="count">${counts[c.id]}</span></label>`)
+    .join('');
+  const extracts = map.extracts.filter((e) => e.faction !== 'pmc');
+  const pos = S.state.position && S.state.position.map === S.mapId ? S.state.position : null;
+  const near = pos ? Planner.nearestSpawn(map.scavSpawns, pos) : null;
+  const sizes = Object.entries(Loot.ROUTE_SIZES)
+    .map(([k, v]) => `<button data-scav-size="${k}" class="${!sp.picks && sp.size === k ? 'active' : ''}" title="About ${v.budget} m, up to ${v.maxStops} stops">${v.label}</button>`)
+    .join('');
+  const picked = new Set(route.picked);
+
+  let html = `<div class="here-head"><h2>Scav run · ${escapeHtml(map.name)}</h2>${plan.scav ? '<button id="plan-clear" class="small-btn">Reset</button>' : ''}</div>
+  ${planTypeSeg(plan)}
+  <details class="plan-pick" ${sp.cats.length ? '' : 'open'}>
+    <summary>Look for <span class="count">${sp.cats.length} of ${Loot.LOOT_CATS.filter((c) => counts[c.id]).length} kinds</span></summary>
+    ${cats || '<p class="muted small">No loot data for this map.</p>'}
+  </details>`;
+  if (!sp.cats.length) {
+    el.innerHTML = html + '<p class="muted">Tick what you want to loot. The app finds the rooms and buildings with the most of it and plans a route through them.</p>';
+    return;
+  }
+  html += `<h3>Route</h3>
+  <div class="route-ends">
+    <div><span class="badge start">S</span> ${route.startLabel ? escapeHtml(route.startLabel) : '<span class="muted">No start set: starts at stop 1</span>'}
+      <div class="btns">
+        <button id="plan-pick-spawn" class="small-btn">Pick Scav spawn on map</button>
+        ${pos && near ? '<button id="plan-snap-spawn" class="small-btn">Use spawn nearest me</button>' : ''}
+        ${sp.start ? '<button id="plan-clear-start" class="small-btn">Clear</button>' : ''}
+      </div>
+    </div>
+    <div><span class="badge end">E</span>
+      <select id="plan-extract"><option value="">No extract chosen</option>${extracts
+        .map((e) => `<option value="${escapeHtml(e.name)}" ${sp.extract === e.name ? 'selected' : ''}>${escapeHtml(e.name)}${e.faction === 'shared' ? ' (shared)' : ''}</option>`)
+        .join('')}</select>
+    </div>
+  </div>
+  <div class="scav-size"><span class="muted small">Route</span><div class="seg">${sizes}</div>${sp.picks ? '<button id="scav-auto" class="small-btn" title="Throw away your picks and let the app choose the stops">↺ Pick for me</button>' : ''}</div>
+  <ol class="route">${route.stops
+    .map(
+      (s, i) => `<li data-stop="${i}"><span class="num">${i + 1}</span><div><b>${escapeHtml(s.hotspot.name)}</b><div class="small">${escapeHtml(Loot.hotspotSummary(s.hotspot))}</div></div><button class="icon-btn" data-looted="${s.id}" title="Mark as looted: drops it from the route for this raid">✓</button></li>`
+    )
+    .join('')}</ol>
+  ${route.stops.length ? `<p class="muted small">About ${route.length} m in straight lines. ${sp.picks ? 'Stops picked by you.' : 'Stops picked for the most loot per metre walked.'}</p>` : '<p class="muted small">No stops yet. Tick spots below, or click + badges on the map.</p>'}
+  ${route.looted.length ? `<p class="small">✓ Looted: ${route.looted.map((h) => escapeHtml(h.name)).join(', ')} <button id="scav-unloot" class="small-btn">Undo</button></p>` : ''}
+  <p class="muted small">${route.startLive ? '📍 Following you: the route re-plans each time you take a screenshot.' : 'In raid, take a screenshot and the route re-plans from where you are.'}</p>
+  <button id="plan-fit" class="small-btn">Show whole route</button>
+  <h3>Loot spots</h3>
+  <p class="muted small">Best first. Tick to add to the route, or click + on the map.</p>
+  ${route.hotspots
+    .map(
+      (h) => `<label class="pick hotspot"><input type="checkbox" data-hotspot="${h.id}" ${picked.has(h.id) ? 'checked' : ''}/> <span><b>${escapeHtml(h.name)}</b><span class="small muted"> · ${escapeHtml(Loot.hotspotSummary(h, 3))}</span></span><button class="icon-btn" data-fly="${h.id}" title="Show on map">⌖</button></label>`
+    )
+    .join('') || '<p class="muted small">Nothing of those kinds on this map.</p>'}
+  <p class="muted small">Containers are fixed spots, but what's inside is random. tarkov.dev's loose-loot data doesn't include guns, armor or ammo, so weapon boxes, ammo boxes and bodies are the reliable places for them. Scav extracts change from raid to raid: check yours in game (double-tap O).</p>`;
+  el.innerHTML = html;
+}
+
 function renderPlan() {
   const el = $('#tab-plan');
   if (!S.data || !S.mapId) return;
   const map = S.mapById.get(S.mapId);
   const plan = getPlan();
+  if (isScav(plan)) return renderScavPlan(el, map, plan);
   const route = currentRoute();
   const tasks = plannedTasks();
   const loadout = Planner.buildLoadout(tasks, S.mapId, S.state.objectivesDone || {});
@@ -580,6 +777,7 @@ function renderPlan() {
   const near = pos ? Planner.nearestSpawn(map.pmcSpawns, pos) : null;
 
   let html = `<div class="here-head"><h2>Raid plan · ${escapeHtml(map.name)}</h2>${plan.tasks.length ? '<button id="plan-clear" class="small-btn">Clear</button>' : ''}</div>
+  ${planTypeSeg(plan)}
   <details class="plan-pick" ${plan.tasks.length ? '' : 'open'}>
     <summary>Quests for this raid <span class="count">${plan.tasks.length} selected</span></summary>
     <h4 class="status-started">Active</h4>${pick(options.started)}
@@ -643,7 +841,12 @@ function wirePlan() {
   el.addEventListener('change', async (e) => {
     const t = e.target;
     if (t.dataset.planTask) await togglePlanned(t.dataset.planTask);
-    if (t.id === 'plan-extract') await savePlan({ extract: t.value || null });
+    if (t.id === 'plan-extract') await (isScav() ? saveScav({ extract: t.value || null }) : savePlan({ extract: t.value || null }));
+    if (t.dataset.lootCat) {
+      const cats = [...el.querySelectorAll('[data-loot-cat]:checked')].map((c) => c.dataset.lootCat);
+      await saveScav({ cats, picks: null }); // hotspots change with the categories, so re-pick
+    }
+    if (t.dataset.hotspot) await toggleHotspot(t.dataset.hotspot);
   });
   el.addEventListener('click', async (e) => {
     const t = e.target.closest('button, li[data-stop]');
@@ -652,16 +855,43 @@ function wirePlan() {
       e.preventDefault();
       return QuestDetails.open(t.dataset.detailsTask);
     }
-    if (t.id === 'plan-clear') await window.tqm.setPlan(S.mapId, null);
-    if (t.id === 'plan-clear-start') await savePlan({ start: null });
+    const scav = isScav();
+    if (t.dataset.planType) {
+      if (t.dataset.planType === getPlan().type) return;
+      await savePlan({ type: t.dataset.planType });
+      if (t.dataset.planType === 'scav' && S.state.settings.markerFilter !== 'plan') await window.tqm.setSettings({ markerFilter: 'plan' });
+      return;
+    }
+    if (t.dataset.scavSize) return saveScav({ size: t.dataset.scavSize, picks: null });
+    if (t.id === 'scav-auto') return saveScav({ picks: null });
+    if (t.dataset.looted) {
+      e.stopPropagation();
+      lootedSet().add(t.dataset.looted);
+      renderMarkers();
+      return renderPlan();
+    }
+    if (t.id === 'scav-unloot') {
+      lootedSet().clear();
+      renderMarkers();
+      return renderPlan();
+    }
+    if (t.dataset.fly) {
+      e.preventDefault();
+      const h = currentRoute().hotspots.find((x) => x.id === t.dataset.fly);
+      if (h) mapView.flyTo(h.position);
+      return;
+    }
+    if (t.id === 'plan-clear') await window.tqm.setPlan(S.mapId, scav ? { ...getPlan(), scav: null } : null);
+    if (t.id === 'plan-clear-start') await (scav ? saveScav({ start: null }) : savePlan({ start: null }));
     if (t.id === 'plan-fit') mapView.fitRoute(currentRoute());
     if (t.id === 'plan-pick-spawn') {
       if (!S.state.settings.showSpawns) await window.tqm.setSettings({ showSpawns: true });
-      toast('Click a PMC spawn (small white dot) on the map');
+      toast(`Click a ${scav ? 'Scav' : 'PMC'} spawn (small ${scav ? 'green' : 'white'} dot) on the map`);
     }
     if (t.id === 'plan-snap-spawn') {
-      const near = Planner.nearestSpawn(S.mapById.get(S.mapId).pmcSpawns, S.state.position);
-      if (near) await savePlan({ start: { ...near.spawn.position, label: `PMC spawn nearest you (${Math.round(near.distance)} m away)` } });
+      const near = Planner.nearestSpawn(S.mapById.get(S.mapId)[scav ? 'scavSpawns' : 'pmcSpawns'], S.state.position);
+      const start = near ? { ...near.spawn.position, label: `${scav ? 'Scav' : 'PMC'} spawn nearest you (${Math.round(near.distance)} m away)` } : null;
+      if (start) await (scav ? saveScav({ start }) : savePlan({ start }));
     }
     if (t.dataset.stop !== undefined) {
       const stop = currentRoute().stops[Number(t.dataset.stop)];
@@ -861,6 +1091,13 @@ function wire() {
     window.tqm.setSettings({ extractFactions: factions });
   });
   $('#locks-toggle').addEventListener('click', () => window.tqm.setSettings({ showLocks: !S.state.settings.showLocks }));
+  $('#loot-toggle').addEventListener('click', () => window.tqm.setSettings({ showLoot: !S.state.settings.showLoot }));
+  $('#loot-legend').addEventListener('change', () => {
+    const cats = [...document.querySelectorAll('#loot-legend [data-loot]:checked')].map((c) => c.dataset.loot);
+    S.state.settings.lootCats = cats;
+    renderMarkers();
+    window.tqm.setSettings({ lootCats: cats });
+  });
   wirePlan();
   $('#sidebar-toggle').addEventListener('click', () => {
     S.state.settings.sidebarCollapsed = !S.state.settings.sidebarCollapsed;
@@ -970,6 +1207,9 @@ async function onState(st) {
     await loadData();
     if (S.mapId) await selectMap(S.mapId);
   }
+  const rs = st.raid?.status;
+  if (rs === 'loading' && S.lastRaidStatus !== 'loading') S.looted.clear();
+  S.lastRaidStatus = rs;
   renderTopbar();
   if (S.state.raid.map !== S.lastRaidMap) {
     const first = S.lastRaidMap == null;

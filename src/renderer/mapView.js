@@ -115,6 +115,7 @@ class MapView {
     this.floor = null;
     this.floorLayer = null;
     this.svgRoot = null;
+    this.lootSig = null;
     if (!display) return;
 
     const maxZoom = Math.max(7, display.maxZoom || 5);
@@ -149,6 +150,10 @@ class MapView {
     this.extractLayer = L.layerGroup().addTo(map);
     this.spawnLayer = L.layerGroup().addTo(map);
     this.lockLayer = L.layerGroup().addTo(map);
+    // loot spots can number in the thousands: draw them on a canvas, not as DOM elements
+    this.lootRenderer = L.canvas({ padding: 0.5 });
+    this.lootLayer = L.layerGroup().addTo(map);
+    this.lootMarkers = [];
     this.routeLayer = L.layerGroup().addTo(map);
     this.positionLayer = L.layerGroup().addTo(map);
 
@@ -242,6 +247,10 @@ class MapView {
 
   refreshFloorDimming() {
     for (const m of [...(this.extractMarkers || []), ...(this.lockMarkers || [])]) m.getElement()?.classList.toggle('off-floor', (m.options.floor || null) !== this.floor);
+    for (const m of this.lootMarkers || []) {
+      const off = (m.options.floor || null) !== this.floor;
+      m.setStyle({ opacity: off ? 0.3 : 1, fillOpacity: off ? 0.25 : 0.9 });
+    }
     for (const markers of this.markerIndex.values()) {
       for (const m of markers) {
         const off = (m.options.floor || null) !== this.floor;
@@ -370,17 +379,46 @@ class MapView {
     this.refreshFloorDimming();
   }
 
-  /** PMC spawn points. Clicking one calls handlers.spawnClick(spawn). */
-  setSpawns(spawns, show) {
+  /**
+   * Loot containers and loose-loot spots, coloured by category.
+   * points: [{ c: category, n: label, p: {x,y,z}, x?: possible items }]
+   */
+  setLoot(points) {
+    if (!this.map) return;
+    this.lootLayer.clearLayers();
+    this.lootMarkers = [];
+    for (const l of points || []) {
+      const cat = window.Loot?.CAT_BY_ID[l.c];
+      const floor = this.floorFor({ position: l.p });
+      const loose = !l.w;
+      const m = L.circleMarker(pos(l.p), {
+        renderer: this.lootRenderer,
+        radius: loose ? 3.5 : 5,
+        weight: loose ? 1 : 1.5,
+        color: '#111',
+        fillColor: cat?.color || '#999',
+        fillOpacity: 0.9,
+        floor,
+      });
+      const tip = `${cat ? cat.icon + ' ' : ''}<b>${escapeHtml(l.n)}</b>${l.x ? `<br><span class="tt-sub">Can spawn: ${escapeHtml(l.x)}</span>` : ''}${floor ? `<br><span class="tt-sub">${escapeHtml(floor)}</span>` : ''}`;
+      m.bindTooltip(tip, { direction: 'top', offset: [0, -4], className: 'quest-tooltip' });
+      m.addTo(this.lootLayer);
+      this.lootMarkers.push(m);
+    }
+    this.refreshFloorDimming();
+  }
+
+  /** Spawn points (PMC or Scav). Clicking one calls handlers.spawnClick(spawn). */
+  setSpawns(spawns, show, kind = 'pmc') {
     if (!this.map) return;
     this.spawnLayer.clearLayers();
     if (!show) return;
     for (const sp of spawns) {
       L.marker(pos(sp.position), {
-        icon: L.divIcon({ className: 'spawn-marker', html: '<span></span>', iconSize: [12, 12], iconAnchor: [6, 6] }),
+        icon: L.divIcon({ className: `spawn-marker spawn-${kind}`, html: '<span></span>', iconSize: [12, 12], iconAnchor: [6, 6] }),
         keyboard: false,
       })
-        .bindTooltip('PMC spawn: click to start your route here', { direction: 'top', offset: [0, -6] })
+        .bindTooltip(`${kind === 'scav' ? 'Scav' : 'PMC'} spawn: click to start your route here`, { direction: 'top', offset: [0, -6] })
         .on('click', () => this.handlers.spawnClick?.(sp))
         .addTo(this.spawnLayer);
     }
@@ -390,7 +428,7 @@ class MapView {
   setRoute(route) {
     if (!this.map) return;
     this.routeLayer.clearLayers();
-    if (!route || (!route.stops.length && !route.start)) return;
+    if (!route || (!route.stops.length && !route.start && !route.candidates?.length)) return;
     const pts = [];
     if (route.start) pts.push(pos(route.start));
     for (const s of route.stops) pts.push(pos(s.point.position));
@@ -399,14 +437,22 @@ class MapView {
       L.polyline(pts, { className: 'route-line-shadow', weight: 7, interactive: false }).addTo(this.routeLayer);
       L.polyline(pts, { className: 'route-line', weight: 3, dashArray: '8 7', interactive: false }).addTo(this.routeLayer);
     }
-    const badge = (p, text, cls) =>
-      L.marker(pos(p), {
-        zIndexOffset: 1500,
-        interactive: false,
+    const badge = (p, text, cls, extra) => {
+      const m = L.marker(pos(p), {
+        zIndexOffset: cls === 'cand' ? 1400 : 1500,
+        interactive: !!extra,
         icon: L.divIcon({ className: `route-badge ${cls}`, html: `<span>${text}</span>`, iconSize: [20, 20], iconAnchor: [10, 26] }),
       }).addTo(this.routeLayer);
+      if (extra?.tip) m.bindTooltip(extra.tip, { direction: 'top', offset: [0, -26], className: 'quest-tooltip' });
+      if (extra?.click) m.on('click', extra.click);
+      return m;
+    };
+    // Scav runs: other loot hotspots you could add (click toggles them in or out of the route)
+    for (const c of route.candidates || []) badge(c.position, '+', 'cand', { tip: c.tip, click: () => this.handlers.hotspotClick?.(c.id) });
     if (route.start) badge(route.start, 'S', 'start');
-    route.stops.forEach((s, i) => badge(s.point.position, i + 1, 'stop'));
+    route.stops.forEach((s, i) =>
+      badge(s.point.position, i + 1, 'stop', s.tip ? { tip: s.tip, click: s.id ? () => this.handlers.hotspotClick?.(s.id) : null } : null)
+    );
     if (route.end) badge(route.end, 'E', 'end');
   }
 

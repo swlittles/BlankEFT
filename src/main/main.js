@@ -343,13 +343,26 @@ function registerIpc() {
 
   ipcMain.handle('plan:set', (_e, { mapId, plan }) => {
     store.updateProfile(viewMode(), (p) => {
-      if (!plan || (!plan.tasks?.length && !plan.start && !plan.extract)) delete p.plans[mapId];
+      const point = (s) => (s && Number.isFinite(s.x) ? { x: s.x, y: s.y, z: s.z, label: String(s.label || '').slice(0, 120) } : null);
+      const strings = (a, max) => (Array.isArray(a) ? a.filter((t) => typeof t === 'string' && t.length < 64).slice(0, max) : []);
+      const sc = plan?.scav;
+      const scav = sc
+        ? {
+            start: point(sc.start),
+            extract: sc.extract ? String(sc.extract) : null,
+            cats: strings(sc.cats, 12),
+            picks: Array.isArray(sc.picks) ? strings(sc.picks, 30) : null, // null = let the app pick
+            size: ['short', 'medium', 'long'].includes(sc.size) ? sc.size : 'medium',
+          }
+        : null;
+      if (!plan || (!plan.tasks?.length && !plan.start && !plan.extract && plan.type !== 'scav' && !scav)) delete p.plans[mapId];
       else
         p.plans[mapId] = {
+          type: plan.type === 'scav' ? 'scav' : 'pmc',
           tasks: (plan.tasks || []).filter((t) => typeof t === 'string'),
-          start:
-            plan.start && Number.isFinite(plan.start.x) ? { x: plan.start.x, y: plan.start.y, z: plan.start.z, label: String(plan.start.label || '') } : null,
+          start: point(plan.start),
           extract: plan.extract ? String(plan.extract) : null,
+          scav,
         };
     });
     pushState();
@@ -395,7 +408,7 @@ function registerIpc() {
   });
 
   ipcMain.handle('settings:set', (_e, patch) => {
-    const allowed = ['viewMode', 'markerFilter', 'showExtracts', 'showSpawns', 'followRaidMap', 'alwaysOnTop', 'questSort', 'sidebarCollapsed', 'showLocks', 'extractFactions'];
+    const allowed = ['viewMode', 'markerFilter', 'showExtracts', 'showSpawns', 'followRaidMap', 'alwaysOnTop', 'questSort', 'sidebarCollapsed', 'showLocks', 'extractFactions', 'showLoot', 'lootCats'];
     const clean = {};
     for (const k of allowed) if (k in patch) clean[k] = patch[k];
     store.setSettings(clean);

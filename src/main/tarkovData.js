@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { buildArmory } = require('./armoryData');
+const { CONTAINERS } = require('../renderer/loot');
 
 const JSON_BASE = 'https://json.tarkov.dev';
 const MAPS_CONFIG_URL = 'https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/src/data/maps.json';
@@ -180,6 +181,53 @@ function buildModel({ dataMode, tasks, tasksEn, maps, mapsEn, traders, tradersEn
     return kinds;
   };
 
+  // Loot containers (by type) and loose-loot spots, for the loot layer and Scav runs.
+  const containerDefs = {};
+  for (const c of Object.values(maps.data.lootContainers || {})) containerDefs[c.id] = { name: tMap(c.name), kind: CONTAINERS[c.normalizedName] || null };
+  const itemPrice = (it) => it?.avg24hPrice || it?.lastLowPrice || it?.basePrice || 0;
+  const r1 = (n) => Math.round(n * 10) / 10;
+  const P = (p) => ({ x: r1(p.x), y: r1(p.y), z: r1(p.z) });
+  const lootFor = (m) => {
+    const out = [];
+    for (const lc of m.lootContainers || []) {
+      const def = containerDefs[lc.lootContainer];
+      if (!def?.kind || !lc.position) continue;
+      out.push({ c: def.kind.cat, n: def.name, w: def.kind.w, p: P(lc.position) });
+    }
+    for (const l of m.lootLoose || []) {
+      if (!l.position) continue;
+      const its = (l.items || []).map((id) => allItems[id]).filter(Boolean);
+      const name = (it) => tItem(it.shortName) || tItem(it.name) || it.normalizedName;
+      const keys = its.filter((it) => it.types?.includes('keys'));
+      if (keys.length) out.push({ c: 'keys', n: 'Loose key spawn', p: P(l.position), x: keys.slice(0, 3).map(name).join(', ') + (keys.length > 3 ? '…' : '') });
+      const rich = its.filter((it) => !it.types?.some((t) => t === 'keys' || t === 'poster') && itemPrice(it) >= 100000).sort((a, b) => itemPrice(b) - itemPrice(a));
+      if (rich.length) out.push({ c: 'valuables', n: 'Loose valuable spot', p: P(l.position), x: rich.slice(0, 3).map(name).join(', ') + (rich.length > 3 ? '…' : '') });
+      if (its.some((it) => it.types?.includes('meds'))) out.push({ c: 'meds', n: 'Loose meds spot', p: P(l.position) });
+    }
+    return out;
+  };
+  // Named areas (from spawn zone names) so loot hotspots get labels like "Dorms".
+  const areaLabel = (zone) => {
+    if (!zone) return null;
+    const t = tMap(zone);
+    let name = t !== zone ? t : /^(Bot)?Zone[A-Z][a-z]/.test(zone) ? zone.replace(/^(Bot)?Zone/, '').replace(/([a-z])([A-Z])/g, '$1 $2') : null;
+    if (!name || /[0-9]|any scav spawn/i.test(name)) return null;
+    return name;
+  };
+  const areasFor = (m) => {
+    const acc = new Map();
+    for (const sp of m.spawns || []) {
+      const name = areaLabel(sp.zoneName);
+      if (!name || !sp.position) continue;
+      const a = acc.get(name) || { name, x: 0, z: 0, n: 0 };
+      a.x += sp.position.x;
+      a.z += sp.position.z;
+      a.n++;
+      acc.set(name, a);
+    }
+    return [...acc.values()].map((a) => ({ name: a.name, x: r1(a.x / a.n), z: r1(a.z / a.n) }));
+  };
+
   const mapList = Object.values(maps.data.maps).map((m) => ({
     id: m.id,
     name: tMap(m.name),
@@ -209,6 +257,11 @@ function buildModel({ dataMode, tasks, tasksEn, maps, mapsEn, traders, tradersEn
     pmcSpawns: (m.spawns || [])
       .filter((sp) => sp.sides?.includes('pmc') && sp.categories?.includes('player'))
       .map((sp) => ({ position: sp.position })),
+    scavSpawns: (m.spawns || [])
+      .filter((sp) => sp.sides?.includes('scav') && sp.categories?.includes('player'))
+      .map((sp) => ({ position: sp.position })),
+    loot: lootFor(m),
+    areas: areasFor(m),
   }));
   const mapById = Object.fromEntries(mapList.map((m) => [m.id, m]));
 

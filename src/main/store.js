@@ -16,6 +16,8 @@ const DEFAULTS = {
     sidebarCollapsed: false,
     showLocks: false,
     extractFactions: ['pmc', 'scav', 'shared'], // which extracts to show
+    showLoot: false,
+    lootCats: ['weapons', 'ammo', 'bodies'], // loot layer categories (see src/renderer/loot.js)
     questSort: 'recent', // All quests tab: 'recent' | 'oldest' | 'trader' | 'name'
   },
   // per session mode ('pve' | 'regular' | 'pvpseason')
@@ -25,7 +27,8 @@ const DEFAULTS = {
 };
 
 function emptyProfile() {
-  // plans: { [mapId]: { tasks: [taskId], start: {x,y,z,label}|null, extract: name|null } }
+  // plans: { [mapId]: { type: 'pmc'|'scav', tasks: [taskId], start: {x,y,z,label}|null, extract: name|null,
+  //   scav: { start, extract, cats: [lootCat], picks: [hotspotId]|null, size } } }
   // prestiges: [time] detected from logs; quest progress before the latest one is ignored unless ignorePrestige
   // prestigeManual: { level, time } = "I was prestige <level> at <time>"; later detected prestiges add to it
   // sinceReason: why `since` is set ('wipe' | 'date')

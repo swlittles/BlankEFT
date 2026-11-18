@@ -453,3 +453,21 @@ body.sidebar-collapsed #toasts { right: 16px; }
 .part-pick { max-width: 420px; width: 100%; padding: 2px 6px; font-size: 12.5px; }
 .conf { color: #e58b8b; font-size: 11px; }
 .empty-slots td { opacity: 0.85; }
+
+/* Loot layer + Scav runs */
+#loot-legend { left: auto; right: 30px; max-height: calc(100% - 120px); overflow-y: auto; }
+#loot-legend label .muted { margin-left: auto; padding-left: 8px; font-size: 11px; }
+.plan-type { margin: 4px 0 10px; }
+.plan-type button { flex: 1; }
+.loot-cat .lg-dot, .hotspot .lg-dot { flex: none; }
+.loot-cat .count { color: var(--muted); font-size: 11px; }
+.pick.hotspot { align-items: flex-start; }
+.pick.hotspot > span { flex: 1; }
+.scav-size { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
+ol.route li .icon-btn { margin-left: auto; align-self: center; color: var(--muted); font-size: 14px; }
+ol.route li .icon-btn:hover { color: #9fe07a; }
+.route-badge.cand span { background: rgba(30, 33, 38, 0.85); color: #f6e7bd; border-color: #f6e7bd; border-style: dashed; cursor: pointer; }
+.route-badge.cand:hover span { background: #3a3424; }
+.route-badge.stop { cursor: pointer; }
+.spawn-marker.spawn-scav span { border-color: #4f7a2f; }
+.spawn-marker.spawn-scav:hover span { background: #9fe07a; }
