@@ -408,7 +408,7 @@ function registerIpc() {
   });
 
   ipcMain.handle('settings:set', (_e, patch) => {
-    const allowed = ['viewMode', 'markerFilter', 'showExtracts', 'showSpawns', 'followRaidMap', 'alwaysOnTop', 'questSort', 'sidebarCollapsed', 'showLocks', 'extractFactions', 'showLoot', 'lootCats'];
+    const allowed = ['viewMode', 'markerFilter', 'showExtracts', 'showSpawns', 'followRaidMap', 'alwaysOnTop', 'questSort', 'sidebarCollapsed', 'showLocks', 'extractFactions', 'showLoot', 'lootCats', 'showBosses'];
     const clean = {};
     for (const k of allowed) if (k in patch) clean[k] = patch[k];
     store.setSettings(clean);

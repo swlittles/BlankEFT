@@ -150,6 +150,8 @@ class MapView {
     this.extractLayer = L.layerGroup().addTo(map);
     this.spawnLayer = L.layerGroup().addTo(map);
     this.lockLayer = L.layerGroup().addTo(map);
+    this.bossLayer = L.layerGroup().addTo(map);
+    this.bossMarkers = [];
     // loot spots can number in the thousands: draw them on a canvas, not as DOM elements
     this.lootRenderer = L.canvas({ padding: 0.5 });
     this.lootLayer = L.layerGroup().addTo(map);
@@ -246,7 +248,7 @@ class MapView {
   }
 
   refreshFloorDimming() {
-    for (const m of [...(this.extractMarkers || []), ...(this.lockMarkers || [])]) m.getElement()?.classList.toggle('off-floor', (m.options.floor || null) !== this.floor);
+    for (const m of [...(this.extractMarkers || []), ...(this.lockMarkers || []), ...(this.bossMarkers || [])]) m.getElement()?.classList.toggle('off-floor', (m.options.floor || null) !== this.floor);
     for (const m of this.lootMarkers || []) {
       const off = (m.options.floor || null) !== this.floor;
       m.setStyle({ opacity: off ? 0.3 : 1, fillOpacity: off ? 0.25 : 0.9 });
@@ -422,6 +424,41 @@ class MapView {
         .on('click', () => this.handlers.spawnClick?.(sp))
         .addTo(this.spawnLayer);
     }
+  }
+
+  /**
+   * Boss spawn spots. spots: [{ label, position, bosses: [{ name, portrait, chance, mapChance, escorts }] }]
+   * Hovering one lists the bosses that can spawn there.
+   */
+  setBosses(spots, show) {
+    if (!this.map) return;
+    this.bossLayer.clearLayers();
+    this.bossMarkers = [];
+    if (!show) return;
+    for (const s of spots || []) {
+      if (!s.position) continue;
+      const floor = this.floorFor({ position: s.position });
+      const top = s.bosses[0];
+      const m = L.marker(pos(s.position), {
+        icon: L.divIcon({ className: 'boss-marker', html: '<span>💀</span>', iconSize: [24, 24], iconAnchor: [12, 12] }),
+        keyboard: false,
+        zIndexOffset: 900,
+        floor,
+      });
+      const rows = s.bosses
+        .map(
+          (b) => `<div class="boss-row">${b.portrait ? `<img src="${escapeHtml(b.portrait)}" alt="" />` : '<span class="boss-noimg">💀</span>'}<div><b>${escapeHtml(b.name)}</b> <span class="boss-chance">${escapeHtml(window.Bosses.pct(b.chance))}</span>${
+            b.mapChance && Math.abs(b.mapChance - b.chance) > 0.05 ? `<span class="tt-sub"> · ${escapeHtml(window.Bosses.pct(b.mapChance))} per raid</span>` : ''
+          }${b.groups > 1 ? `<span class="tt-sub"> · up to ${b.groups} groups</span>` : ''}${b.escorts ? `<br><span class="tt-sub">with ${escapeHtml(b.escorts)}</span>` : ''}</div></div>`,
+        )
+        .join('');
+      const tip = `<div class="boss-tip"><div class="boss-title">💀 Boss spawn · <b>${escapeHtml(s.label)}</b>${floor ? ` <span class="tt-sub">(${escapeHtml(floor)})</span>` : ''}</div>${rows}<div class="tt-sub boss-foot">% = chance this boss spawns here in a raid</div></div>`;
+      m.bindTooltip(tip, { direction: 'top', offset: [0, -12], className: 'quest-tooltip boss-tooltip' });
+      m.addTo(this.bossLayer);
+      this.bossMarkers.push(m);
+      if (top) m.getElement()?.setAttribute('aria-label', `Boss spawn: ${s.bosses.map((b) => b.name).join(', ')}`);
+    }
+    this.refreshFloorDimming();
   }
 
   /** Planned route: start → numbered stops → extract. */

@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { buildArmory } = require('./armoryData');
 const { CONTAINERS } = require('../renderer/loot');
+const Bosses = require('../renderer/bosses');
 
 const JSON_BASE = 'https://json.tarkov.dev';
 const MAPS_CONFIG_URL = 'https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/src/data/maps.json';
@@ -262,6 +263,7 @@ function buildModel({ dataMode, tasks, tasksEn, maps, mapsEn, traders, tradersEn
       .map((sp) => ({ position: sp.position })),
     loot: lootFor(m),
     areas: areasFor(m),
+    bosses: Bosses.bossSpots(m, maps.data.mobs || {}, tMap),
   }));
   const mapById = Object.fromEntries(mapList.map((m) => [m.id, m]));
 

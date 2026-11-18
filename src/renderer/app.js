@@ -278,6 +278,7 @@ function renderTopbar() {
   $('#spawns-toggle').classList.toggle('active', !!st.settings.showSpawns);
   $('#locks-toggle').classList.toggle('active', !!st.settings.showLocks);
   $('#loot-toggle').classList.toggle('active', !!st.settings.showLoot);
+  $('#bosses-toggle').classList.toggle('active', !!st.settings.showBosses);
   $('#pin-toggle').classList.toggle('active', !!st.settings.alwaysOnTop);
   applySidebar();
 
@@ -317,8 +318,28 @@ function renderMarkers() {
   mapView.setSpawns((scav ? map?.scavSpawns : map?.pmcSpawns) || [], !!S.state.settings.showSpawns, scav ? 'scav' : 'pmc');
   $('#spawns-toggle').title = scav ? 'Show Scav spawn points (this map has a Scav-run plan)' : 'Show PMC spawn points';
   renderLoot(map);
+  mapView.setBosses(bossSpots(map), !!S.state.settings.showBosses);
   mapView.setLocks(lockEntries(S.mapId), !!S.state.settings.showLocks);
   mapView.setRoute(S.state.settings.markerFilter === 'plan' ? currentRoute() : null);
+}
+
+// Boss spots. A few of tarkov.dev's boss zones come without coordinates (Dorms and New Gas on
+// Customs, Pier on Shoreline...): place those on the map's own area label of the same name.
+function bossSpots(map) {
+  if (!map?.bosses?.length) return [];
+  const areas = mapAreas(map);
+  const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const out = [];
+  for (const s of map.bosses) {
+    if (s.position) {
+      out.push(s);
+      continue;
+    }
+    const want = norm(s.label);
+    const a = areas.find((a) => norm(a.name) === want) || areas.find((a) => { const n = norm(a.name); return n.length >= 4 && want.length >= 4 && (n.includes(want) || want.includes(n)); });
+    if (a) out.push({ ...s, position: { x: a.x, y: 0, z: a.z } });
+  }
+  return out;
 }
 
 // Loot layer: a Scav-run plan on the Plan filter shows its own categories; otherwise the Loot toggle.
@@ -1095,6 +1116,7 @@ function wire() {
   });
   $('#locks-toggle').addEventListener('click', () => window.tqm.setSettings({ showLocks: !S.state.settings.showLocks }));
   $('#loot-toggle').addEventListener('click', () => window.tqm.setSettings({ showLoot: !S.state.settings.showLoot }));
+  $('#bosses-toggle').addEventListener('click', () => window.tqm.setSettings({ showBosses: !S.state.settings.showBosses }));
   $('#loot-legend').addEventListener('change', () => {
     const cats = [...document.querySelectorAll('#loot-legend [data-loot]:checked')].map((c) => c.dataset.loot);
     S.state.settings.lootCats = cats;

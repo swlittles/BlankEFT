@@ -17,6 +17,7 @@ const DEFAULTS = {
     showLocks: false,
     extractFactions: ['pmc', 'scav', 'shared'], // which extracts to show
     showLoot: false,
+    showBosses: true,
     lootCats: ['weapons', 'ammo', 'bodies'], // loot layer categories (see src/renderer/loot.js)
     questSort: 'recent', // All quests tab: 'recent' | 'oldest' | 'trader' | 'name'
   },
