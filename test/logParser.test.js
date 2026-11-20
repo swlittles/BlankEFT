@@ -136,3 +136,29 @@ test('quest state: logs, inference, manual overrides, availability', () => {
   s = computeTaskStates(tasks, events, {}, { since: 3 });
   assert.strictEqual(s.a.status, 'completed'); // still inferred from c
 });
+
+test('back at the menu after a raid', () => {
+  const text = '2026-11-19 14:45:09.101|1.3.0.2.48779|Info|application|PrepareSelectedProfileLocally ProfileId:abc AccountId:1\n';
+  const ev = interpretEntry(splitEntries(text, { final: true }).entries[0]);
+  assert.strictEqual(ev.type, 'menu');
+});
+
+test('quest state: whatever happened last wins between your hand-set status and the game', () => {
+  const tasks = [
+    { id: 'a', minPlayerLevel: 1, factionName: 'Any', taskRequirements: [] },
+    { id: 'b', minPlayerLevel: 1, factionName: 'Any', taskRequirements: [] },
+    { id: 'c', minPlayerLevel: 1, factionName: 'Any', taskRequirements: [] },
+  ];
+  const events = [
+    { taskId: 'a', status: 'finished', time: 2000 }, // finished in game after you marked it started
+    { taskId: 'b', status: 'started', time: 1000 }, // you marked it complete later
+    { taskId: 'c', status: 'started', time: 3000 },
+  ];
+  const manual = { a: 'started', b: 'completed', c: 'completed' };
+  const s = computeTaskStates(tasks, events, manual, { manualAt: { a: 1500, b: 1500 } });
+  assert.strictEqual(s.a.status, 'completed');
+  assert.strictEqual(s.a.source, 'log');
+  assert.strictEqual(s.b.status, 'completed');
+  assert.strictEqual(s.b.source, 'manual');
+  assert.strictEqual(s.c.status, 'completed', 'old marks with no time still win');
+});

@@ -129,6 +129,10 @@ function interpretEntry(entry) {
 
   if (/Network game matching (aborted|cancelled)/.test(msg)) return { type: 'matchCancelled', time: t };
 
+  // Logged when your profile is loaded in the menu: at login and every time you're back from a raid
+  // (dead, extracted or left). The UserMatchOver notification below only shows up now and then.
+  if (/^PrepareSelectedProfileLocally\b/.test(msg)) return { type: 'menu', time: t };
+
   if (msg.includes('Got notification | UserMatchOver')) {
     return { type: 'raidEnded', nameId: entry.json?.location || null, time: t };
   }

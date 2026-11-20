@@ -55,3 +55,15 @@ test('reads history, then tails live writes and follows a restarted game', async
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('log folders with a one-digit hour are found and ordered by time', () => {
+  const { listFolders, folderTime } = require('../src/main/logWatcher');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tqm-logs-'));
+  try {
+    for (const n of ['log_2026.11.19_13-07-32_1.3.0.2.48779', 'log_2026.11.20_0-22-06_1.3.0.2.48779', 'log_2026.11.19_9-05-00_1.3.0.2.48779']) fs.mkdirSync(path.join(dir, n));
+    assert.deepStrictEqual(listFolders(dir), ['log_2026.11.19_9-05-00_1.3.0.2.48779', 'log_2026.11.19_13-07-32_1.3.0.2.48779', 'log_2026.11.20_0-22-06_1.3.0.2.48779']);
+    assert.strictEqual(new Date(folderTime('log_2026.11.20_0-22-06_1.3.0.2.48779')).getHours(), 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -22,12 +22,22 @@ function computeTaskStates(tasks, logEvents, manual = {}, opts = {}) {
     state[e.taskId] = { status: LOG_STATUS[e.status], source: 'log', time: e.time };
   }
 
+  // A status you set by hand wins, unless the game logged something for that quest after you set
+  // it (e.g. you marked it "started" and then finished it in game). Old marks with no time always win.
+  const lastLog = {};
+  for (const e of sorted) if (byId.has(e.taskId)) lastLog[e.taskId] = e.time || 0;
+  const overridden = new Set();
   for (const [taskId, status] of Object.entries(manual)) {
     if (!byId.has(taskId)) continue;
+    const at = opts.manualAt?.[taskId];
+    if (at && lastLog[taskId] > at) {
+      overridden.add(taskId);
+      continue;
+    }
     if (status === 'none') delete state[taskId];
     else state[taskId] = { status, source: 'manual', time: opts.manualAt?.[taskId] || null };
   }
-  const manualNone = new Set(Object.entries(manual).filter(([, s]) => s === 'none').map(([id]) => id));
+  const manualNone = new Set(Object.entries(manual).filter(([id, s]) => s === 'none' && !overridden.has(id)).map(([id]) => id));
 
   // Anything you've started/finished/failed means its prerequisites were done.
   const promote = (taskId, status) => {

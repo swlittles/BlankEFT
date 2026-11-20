@@ -67,6 +67,12 @@ async function applyMapEvent(ev, { quiet = false } = {}) {
       raid.status = 'inRaid';
       raid.since = ev.time;
       break;
+    case 'menu':
+      // back at the main menu; ignore it while a raid is still loading
+      if (raid.status === 'menu' || raid.status === 'loading') return;
+      raid.status = 'menu';
+      raid.since = ev.time;
+      break;
     case 'matchCancelled':
     case 'raidEnded':
       raid.status = 'menu';
@@ -104,8 +110,14 @@ async function startWatching() {
     if (live.raid.status === 'unknown') live.raid.status = 'menu';
     pushState();
   });
-  watcher.on('session', ({ mode }) => {
+  watcher.on('session', ({ mode, fresh }) => {
     if (mode) live.gameMode = mode;
+    // the game was restarted: whatever raid the old session was in is over
+    if (fresh && live.raid.status !== 'menu') {
+      live.raid.status = 'menu';
+      live.raid.since = Date.now();
+      live.position = null;
+    }
     pushState();
   });
   watcher.on('event', async (ev) => {

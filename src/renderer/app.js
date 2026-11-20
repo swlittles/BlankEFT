@@ -390,23 +390,34 @@ function statusChip(state) {
 }
 
 function renderHere() {
-  const el = $('#tab-here');
+  const el = $('#here-list');
   if (!S.data || !S.mapId) {
     el.innerHTML = '<p class="muted">Loading…</p>';
     return;
   }
   const map = S.mapById.get(S.mapId);
   const done = S.state.objectivesDone || {};
-  const groups = { started: [], available: [] };
+  // With a search, every quest on this map is searched, whatever its status; without one,
+  // just the ones you can work on now.
+  const q = $('#here-search').value.trim().toLowerCase();
+  const groups = q ? { started: [], available: [], locked: [], failed: [], completed: [] } : { started: [], available: [] };
+  const matches = (t) =>
+    !q ||
+    t.name.toLowerCase().includes(q) ||
+    t.trader.name.toLowerCase().includes(q) ||
+    t.objectives.some((o) => objectiveOnMap(o, S.mapId) && String(o.description || '').toLowerCase().includes(q));
   for (const t of S.data.tasks) {
     const st = taskState(t.id);
-    if (groups[st.status] && taskOnMap(t, S.mapId)) groups[st.status].push(t);
+    if (groups[st.status] && taskOnMap(t, S.mapId) && matches(t)) groups[st.status].push(t);
   }
+  const found = Object.values(groups).reduce((n, g) => n + g.length, 0);
   const markerCount = markerEntries(S.mapId).length;
-  let html = `<div class="here-head"><h2>${escapeHtml(map.name)}</h2><span class="muted small">${markerCount} marker${markerCount === 1 ? '' : 's'} shown</span></div>`;
+  let html = `<div class="here-head"><h2>${escapeHtml(map.name)}</h2><span class="muted small">${q ? `${found} quest${found === 1 ? '' : 's'} found` : `${markerCount} marker${markerCount === 1 ? '' : 's'} shown`}</span></div>`;
   const plan = getPlan();
   const planIds = new Set(plan.tasks);
+  if (q && !found) html += `<p class="muted">No quests on ${escapeHtml(map.name)} match “${escapeHtml(q)}”.</p>`;
   for (const [status, tasks] of Object.entries(groups)) {
+    if (q && !tasks.length) continue;
     tasks.sort((a, b) => a.trader.name.localeCompare(b.trader.name) || a.name.localeCompare(b.name));
     html += `<h3 class="group-title status-${status}">${STATUS_LABEL[status]} <span class="count">${tasks.length}</span></h3>`;
     if (!tasks.length) html += `<p class="muted small">No ${STATUS_LABEL[status].toLowerCase()} quests on this map.</p>`;
@@ -433,7 +444,7 @@ function renderHere() {
           ${status === 'available' ? '<button data-act="start">Mark started</button>' : ''}
           ${t.wikiLink ? '<button data-act="wiki">Wiki</button>' : ''}
           <span class="spacer"></span>
-          <button data-act="complete" class="mark-complete" title="Mark this whole quest as completed. You can undo it.">☐ Mark Complete</button>
+          ${status === 'completed' ? '<span class="muted small">✓ Completed</span>' : '<button data-act="complete" class="mark-complete" title="Mark this whole quest as completed. You can undo it.">☐ Mark Complete</button>'}
         </div>
       </div>`;
     }
@@ -1156,6 +1167,13 @@ function wire() {
     if (e.target.dataset.obj) window.tqm.setObjective(e.target.dataset.obj, e.target.checked);
   });
 
+  $('#here-search').addEventListener('input', renderHere);
+  $('#here-search').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && e.target.value) {
+      e.target.value = '';
+      renderHere();
+    }
+  });
   $('#quest-search').addEventListener('input', renderQuestList);
   $('#quest-status-filter').addEventListener('change', renderQuestList);
   $('#quest-unlock-filter').addEventListener('change', renderQuestList);

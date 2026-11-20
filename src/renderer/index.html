@@ -70,7 +70,12 @@
           <button data-tab="quests">All quests</button>
           <button data-tab="settings">Settings</button>
         </nav>
-        <section class="tab" id="tab-here"></section>
+        <section class="tab" id="tab-here">
+          <div class="quest-tools here-tools">
+            <input id="here-search" type="search" placeholder="Search every quest on this map…" title="Searches quest names, traders and objectives on this map, whatever their status. Esc clears it." />
+          </div>
+          <div id="here-list"></div>
+        </section>
         <section class="tab" id="tab-plan" hidden></section>
         <section class="tab" id="tab-quests" hidden>
           <div class="quest-tools">

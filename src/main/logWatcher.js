@@ -9,7 +9,9 @@ const WATCHED_FILE_RE = /(application|push-notifications|backend)(_\d+)?\.log$/i
 // Backend logs are large and only a few lines matter, so skip parsing unless one of them is present.
 const BACKEND_RE = /backend(_\d+)?\.log$/i;
 const BACKEND_NEEDLE = '/client/prestige/obtain';
-const FOLDER_RE = /^log_(\d{4})\.(\d{2})\.(\d{2})_(\d{2})-(\d{2})-(\d{2})/;
+// e.g. log_2026.11.19_13-07-32_1.3.0.2.48779. The hour isn't zero-padded: a game started at
+// 00:22 writes log_2026.11.20_0-22-06_..., so every part allows one or two digits.
+const FOLDER_RE = /^log_(\d{4})\.(\d{1,2})\.(\d{1,2})_(\d{1,2})-(\d{1,2})-(\d{1,2})/;
 
 function folderTime(name) {
   const m = FOLDER_RE.exec(name);
@@ -23,7 +25,8 @@ function listFolders(logsDir) {
       .readdirSync(logsDir, { withFileTypes: true })
       .filter((d) => d.isDirectory() && FOLDER_RE.test(d.name))
       .map((d) => d.name)
-      .sort();
+      // by time, not by name: "log_..._9-00-00" sorts after "log_..._13-00-00" as text
+      .sort((a, b) => folderTime(a) - folderTime(b) || a.localeCompare(b));
   } catch {
     return [];
   }
@@ -130,14 +133,14 @@ class LogWatcher extends EventEmitter {
       }
       this.live.files.set(file, { offset: atEnd ? size : 0, rest: '', idlePolls: 0 });
     }
-    this.emit('session', { name, mode: this.live.mode });
+    this.emit('session', { name, mode: this.live.mode, fresh: !atEnd });
   }
 
   poll() {
     try {
       const folders = listFolders(this.logsDir);
       const newest = folders[folders.length - 1];
-      if (newest && (!this.live || newest > this.live.name)) {
+      if (newest && (!this.live || folderTime(newest) > folderTime(this.live.name))) {
         // Game was restarted: drain the old session, then follow the new one from the start.
         if (this.live) this.pollFiles(true);
         this.attachLive(newest, false);
