@@ -52,4 +52,6 @@ jobs:
             echo
             echo "**Already installed:** the app updates itself. It downloads new versions in the background and installs them when you restart it."
           } > notes.md
-          gh release edit "$GITHUB_REF_NAME" --notes-file notes.md
+          # (gh release edit trips over the existing tag, so set the body through the API)
+          id="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" --jq .id)"
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -F body=@notes.md -f name="BlankEFT $GITHUB_REF_NAME" > /dev/null
