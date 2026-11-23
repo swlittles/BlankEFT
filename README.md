@@ -27,26 +27,28 @@ PvE, PvP and PvP Season each keep separate progress and their own prestige level
 
 **Read-only.** The app never writes to, deletes, or locks any game file, log, or screenshot. It doesn't read game memory or touch the game process. Its own data lives only in `%APPDATA%\Tarkov Quest Map`.
 
-## Run it
+## Install
+
+Download `BlankEFT-Setup-x.y.z.exe` from the [latest release](https://github.com/swlittles/BlankEFT/releases/latest) and run it. It installs for your Windows user only (no admin prompt) and adds desktop and Start menu shortcuts. The installer isn't code-signed, so Windows may say "Windows protected your PC": click **More info**, then **Run anyway**.
+
+It finds your game by itself: Steam, the BSG launcher, the running game, common folders on every drive, and as a last resort a quick scan for `EscapeFromTarkov.exe`. If it still can't find it, pick the folder in **Settings**.
+
+**Updates are automatic.** The app checks GitHub Releases when it starts and every 2 hours. It downloads a new version in the background, then installs it when you click **Update** in the top bar or the next time you close the app. Your progress (`%APPDATA%Tarkov Quest Map`) is kept.
+
+## Run from source
 
 ```bash
 npm install
 npm start
 ```
 
-Or build a standalone app:
-
-```bash
-npm run package
-```
-
-That creates `release/TarkovQuestMap-win32-x64/TarkovQuestMap.exe`. Copy that whole folder wherever you like.
+Build the installer locally with `npm run dist` (output in `dist/`). To publish a release, run `npm run release` on an up-to-date `main`. It bumps the version, tags and pushes, and the [Release workflow](.github/workflows/release.yml) builds the installer and publishes it to GitHub Releases.
 
 ## How it works
 
 | What | Where it comes from |
 | --- | --- |
-| Install folder | Steam library folders (`HKCU\Software\Valve\Steam`) or the BSG launcher uninstall key; you can override it in Settings |
+| Install folder | BSG launcher settings and uninstall keys, Steam libraries, the running game, common folders on every drive, then a short scan for `EscapeFromTarkov.exe`. The install with the newest logs wins. You can override it in Settings |
 | Session mode (PvE/PvP) | `application_000.log`: `Session mode: Pve` |
 | Current map | `application_000.log`: `scene preset path:maps/<map>.bundle`, then `TRACE-NetworkGameCreate … Location: <map>` |
 | Prestige | `backend_000.log`: `<--- Response … /client/prestige/obtain` |

@@ -1,0 +1,55 @@
+# Builds the Windows installer and publishes it to GitHub Releases when a version tag is pushed.
+# The installed app checks this Releases page and updates itself (see src/main/updater.js).
+# Cut a release with: npm run release
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Tag matches package.json
+        shell: bash
+        run: |
+          v="$(node -p "require('./package.json').version")"
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME doesn't match package.json version $v"; exit 1; }
+
+      - run: npm ci
+      - run: npm test
+
+      - name: Build installer and publish the release
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release notes from the commits since the last release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          prev="$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)"
+          range="${prev:+$prev..}$GITHUB_REF_NAME"
+          {
+            echo "## What's new"
+            git log "$range" --no-merges --format='- %s' | grep -v '^- Release v' || true
+            echo
+            echo "**New install:** download \`BlankEFT-Setup-${GITHUB_REF_NAME#v}.exe\` below and run it. Windows may say \"Windows protected your PC\": click More info, then Run anyway."
+            echo
+            echo "**Already installed:** the app updates itself. It downloads new versions in the background and installs them when you restart it."
+          } > notes.md
+          gh release edit "$GITHUB_REF_NAME" --notes-file notes.md

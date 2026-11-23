@@ -17,8 +17,11 @@ contextBridge.exposeInMainWorld('tqm', {
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
   pickFolder: (kind) => ipcRenderer.invoke('folder:pick', kind),
   openLink: (url) => ipcRenderer.invoke('link:open', url),
+  getUpdate: () => ipcRenderer.invoke('update:get'),
+  checkUpdate: () => ipcRenderer.invoke('update:check'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
   on: (channel, fn) => {
-    if (!['state', 'position', 'toast'].includes(channel)) return;
+    if (!['state', 'position', 'toast', 'update'].includes(channel)) return;
     ipcRenderer.on(channel, (_e, payload) => fn(payload));
   },
 });

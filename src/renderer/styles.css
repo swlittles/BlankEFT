@@ -493,3 +493,7 @@ ol.route li .icon-btn:hover { color: #9fe07a; }
 /* This map: search stays at the top while the list scrolls */
 .here-tools { position: sticky; top: 0; z-index: 5; margin: -2px 0 6px; padding: 2px 0 6px; background: var(--panel); }
 .here-tools input { flex: 1; }
+
+/* Update ready */
+.update-btn { background: #1f4d2c; border-color: #3f9d5a; color: #d6f5df; font-weight: 600; }
+.update-btn:hover { background: #276236; }

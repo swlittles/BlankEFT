@@ -67,3 +67,22 @@ test('log folders with a one-digit hour are found and ordered by time', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('game folder search: picks the install with the newest logs', () => {
+  const { pickBest } = require('../src/main/eftPaths');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tqm-eft-'));
+  try {
+    const old = path.join(dir, 'Battlestate Games', 'EFT');
+    const steam = path.join(dir, 'SteamLibrary', 'steamapps', 'common', 'Escape from Tarkov');
+    fs.mkdirSync(path.join(old, 'Logs', 'log_2025.01.01_10-00-00_0.16'), { recursive: true });
+    fs.mkdirSync(path.join(steam, 'build', 'Logs', 'log_2026.11.20_0-22-06_1.3.0.2'), { recursive: true });
+    const past = new Date('2025-01-01');
+    fs.utimesSync(path.join(old, 'Logs', 'log_2025.01.01_10-00-00_0.16'), past, past);
+    const best = pickBest([path.join(dir, 'nope'), old, steam, steam]);
+    assert.strictEqual(best.installDir, steam);
+    assert.strictEqual(best.logsDir, path.join(steam, 'build', 'Logs'));
+    assert.strictEqual(pickBest([path.join(dir, 'nope')]), null);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -2,7 +2,7 @@
   "name": "tarkov-quest-map",
   "productName": "Tarkov Quest Map",
   "version": "0.1.0",
-  "description": "Windows companion that reads Escape from Tarkov logs to track quests, detect the current map and show quest locations.",
+  "description": "Escape from Tarkov quest map and raid planner for Windows. Reads the game logs (read-only) to track quests, detect the current map and show quest locations.",
   "main": "src/main/main.js",
   "private": true,
   "license": "MIT",
@@ -11,13 +11,62 @@
     "test": "node --test test/*.test.js",
     "scan": "node scripts/scan-logs.js",
     "package": "electron-packager . TarkovQuestMap --icon=assets/icon.ico --platform=win32 --arch=x64 --out=release --overwrite --prune=true --ignore=^/test --ignore=^/release --ignore=^/scripts",
-    "update-local": "node scripts/update-local.js"
+    "update-local": "node scripts/update-local.js",
+    "dist": "electron-builder --win --publish never",
+    "release": "node scripts/release.js"
   },
   "dependencies": {
+    "electron-updater": "^6.8.11",
     "leaflet": "^1.9.4"
   },
   "devDependencies": {
     "@electron/packager": "^20.3.0",
-    "electron": "^45.3.3"
+    "electron": "^45.3.3",
+    "electron-builder": "^26.18.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/swlittles/BlankEFT.git"
+  },
+  "build": {
+    "appId": "TarkovQuestMap.App",
+    "productName": "Tarkov Quest Map",
+    "artifactName": "BlankEFT-Setup-${version}.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json",
+      "!**/*.test.js"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Tarkov Quest Map",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "swlittles",
+        "repo": "BlankEFT",
+        "releaseType": "release"
+      }
+    ]
   }
 }

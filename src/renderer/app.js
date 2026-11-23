@@ -1282,6 +1282,7 @@ async function onState(st) {
   window.tqm.on('toast', (t) => {
     if (t.kind === 'save-error') return toast(`Couldn't save your progress: ${t.error}. Close any other copy of the app and try again.`, 'error');
     if (t.kind === 'prestige') return toast(`Prestige detected in ${t.modeLabel}. Quest progress for that mode starts fresh.`, 'ok');
+    if (t.kind === 'update') return window.Updates?.show(t.version);
     if (t.kind !== 'task') return;
     const name = S.taskById.get(t.taskId)?.name || 'Unknown quest';
     const verb = { started: 'Quest started', finished: 'Quest completed', failed: 'Quest failed' }[t.status];

@@ -8,6 +8,7 @@ const { LogWatcher } = require('./logWatcher');
 const { findLogsDir, findScreenshotsDir } = require('./eftPaths');
 const { computeTaskStates } = require('./questState');
 const { dataModeFor, parseScreenshotName } = require('./logParser');
+const { initUpdater } = require('./updater');
 
 const MODES = ['pve', 'regular', 'pvpseason'];
 const MODE_LABELS = { pve: 'PvE', regular: 'PvP', pvpseason: 'PvP Season' };
@@ -85,14 +86,20 @@ async function applyMapEvent(ev, { quiet = false } = {}) {
 }
 
 // ---------------------------------------------------------------- log watching
-async function startWatching() {
+async function startWatching({ deep = true } = {}) {
+  clearTimeout(startWatching.retry);
   if (watcher) watcher.stop();
   watcher = null;
-  const found = await findLogsDir(store.settings.logsDirOverride);
+  const found = await findLogsDir(store.settings.logsDirOverride, { deep });
   live.logsDir = found.logsDir;
   live.installDir = found.installDir;
-  live.logError = found.logsDir ? null : 'Could not find the Escape from Tarkov Logs folder. Pick it in Settings.';
-  if (!found.logsDir) return pushState();
+  live.logError = found.logsDir ? null : 'Could not find Escape from Tarkov yet. Start the game once, or pick its folder in Settings.';
+  if (!found.logsDir) {
+    // Keep looking (quick checks only): the game may be installed or started after the app.
+    clearTimeout(startWatching.retry);
+    startWatching.retry = setTimeout(() => startWatching({ deep: false }), 60000);
+    return pushState();
+  }
 
   watcher = new LogWatcher(found.logsDir);
   watcher.on('history', async ({ events, sessions }) => {
@@ -163,7 +170,15 @@ function startScreenshotWatcher() {
   if (screenshotWatcher) screenshotWatcher.close();
   screenshotWatcher = null;
   live.screenshotsDir = findScreenshotsDir(app.getPath('documents'), store.settings.screenshotsDirOverride);
-  if (!live.screenshotsDir) return;
+  if (!live.screenshotsDir) {
+    // the game only makes the folder on your first screenshot
+    clearTimeout(startScreenshotWatcher.retry);
+    startScreenshotWatcher.retry = setTimeout(() => {
+      startScreenshotWatcher();
+      if (live.screenshotsDir) pushState();
+    }, 60000);
+    return;
+  }
   try {
     screenshotWatcher = fs.watch(live.screenshotsDir, (event, filename) => {
       if (!filename || !/\.png$/i.test(filename)) return;
@@ -521,6 +536,7 @@ app.whenReady().then(async () => {
   data = new TarkovData(path.join(app.getPath('userData'), 'cache'));
   registerIpc();
   createWindow();
+  initUpdater(send, () => store.flush());
   startScreenshotWatcher();
   await startWatching();
 });
