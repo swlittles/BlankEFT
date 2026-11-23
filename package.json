@@ -57,7 +57,7 @@
       "perMachine": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Tarkov Quest Map",
+      "shortcutName": "BlankEFT",
       "deleteAppDataOnUninstall": false
     },
     "publish": [
