@@ -17,6 +17,7 @@
         <button data-view="map" class="active">Map</button>
         <button data-view="ammo">Ammo</button>
         <button data-view="guns">Gunsmith</button>
+        <button data-view="bosses">Bosses</button>
       </div>
       <div class="status-pill map-only" id="raid-status" title="Detected from the game's log files">Waiting for logs…</div>
       <label class="ctl" title="Which game mode's quest progress is shown. Each mode tracks its own progress.">Mode
@@ -110,7 +111,7 @@
               <option value="name">Name</option>
             </select>
           </div>
-          <div id="quest-counts" class="muted small"></div>
+          <div id="quest-counts"></div>
           <div id="quest-list"></div>
         </section>
         <section class="tab" id="tab-settings" hidden></section>
@@ -118,6 +119,7 @@
     </div>
     <div id="view-ammo" class="view" hidden></div>
     <div id="view-guns" class="view" hidden></div>
+    <div id="view-bosses" class="view" hidden></div>
     <div id="modal" hidden></div>
     <div id="toasts"></div>
 
@@ -130,6 +132,7 @@
     <script src="pathing.js"></script>
     <script src="mapView.js"></script>
     <script src="questDetails.js"></script>
+    <script src="bossesView.js"></script>
     <script src="app.js"></script>
     <script src="updates.js"></script>
   </body>

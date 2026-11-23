@@ -1,5 +1,5 @@
 'use strict';
-/* global MapView, escapeHtml, Planner, Loot, ArmoryViews, AV, QuestDetails */
+/* global MapView, escapeHtml, Planner, Loot, ArmoryViews, AV, QuestDetails, BossesView */
 
 const $ = (sel) => document.querySelector(sel);
 const STATUS_LABEL = { started: 'Active', available: 'Available', completed: 'Completed', failed: 'Failed', locked: 'Locked' };
@@ -246,6 +246,20 @@ function taskOnMap(t, mapId) {
   return t.mapId === mapId || t.objectives.some((o) => objectiveOnMap(o, mapId));
 }
 
+// Map variants count as one location (Night Factory = Factory, Ground Zero 21+ = Ground Zero…)
+const baseMap = (id) => (S.mapById.get(id)?.normalizedName || id).replace(/^(night|infected)-/, '').replace(/-(21|tutorial|dark)$/, '');
+
+/**
+ * "Location: any" quests: on this map only because their steps list nearly every map. A quest with
+ * a map marker here, or a step meant for just a few maps, is map-specific.
+ */
+function anyLocation(t, mapId) {
+  if (t.mapId === mapId) return false;
+  const here = t.objectives.filter((o) => objectiveOnMap(o, mapId));
+  if (!here.length) return false;
+  return here.every((o) => !o.zones.some((z) => z.map === mapId) && !o.possibleLocations.some((l) => l.map === mapId) && new Set(o.maps.map(baseMap)).size >= 8);
+}
+
 function markerEntries(mapId) {
   const out = [];
   const done = S.state.objectivesDone || {};
@@ -484,7 +498,13 @@ function renderHere() {
     tasks.sort((a, b) => a.trader.name.localeCompare(b.trader.name) || a.name.localeCompare(b.name));
     html += `<h3 class="group-title status-${status}">${STATUS_LABEL[status]} <span class="count">${tasks.length}</span></h3>`;
     if (!tasks.length) html += `<p class="muted small">No ${STATUS_LABEL[status].toLowerCase()} quests on this map.</p>`;
-    for (const t of tasks) html += questCardHtml(t, status, { inPlan: planIds.has(t.id) });
+    // Active quests that can be done on most maps go in their own group at the bottom
+    const anywhere = status === 'started' ? tasks.filter((t) => anyLocation(t, S.mapId)) : [];
+    for (const t of tasks) if (!anywhere.includes(t)) html += questCardHtml(t, status, { inPlan: planIds.has(t.id) });
+    if (anywhere.length) {
+      html += `<h4 class="group-sub status-${status}" title="Quests you can progress on almost any map">Any location <span class="count">${anywhere.length}</span></h4>`;
+      for (const t of anywhere) html += questCardHtml(t, status, { inPlan: planIds.has(t.id) });
+    }
   }
   el.innerHTML = html;
 }
@@ -680,9 +700,11 @@ function renderQuestList() {
     const dir = sort === 'oldest' ? 1 : -1;
     rows.sort((a, b) => group(a[1]) - group(b[1]) || (group(a[1]) === 0 ? dir * (a[1].time - b[1].time) : 0) || byTrader(a, b));
   }
-  $('#quest-counts').textContent = Object.entries(STATUS_LABEL)
-    .map(([k, label]) => `${label}: ${counts[k] || 0}`)
-    .join(' · ');
+  // one badge per status that has quests; click one to show just those (again to show all)
+  $('#quest-counts').innerHTML = Object.entries(STATUS_LABEL)
+    .filter(([k]) => counts[k] > 0)
+    .map(([k, label]) => `<button class="chip count-badge status-${k}${sf === k ? ' on' : ''}" data-status="${k}" title="${sf === k ? 'Show every status' : `Show only ${label.toLowerCase()} quests`}">${label} <b>${counts[k]}</b></button>`)
+    .join('');
   const manual = (st) => (st.source === 'manual' ? st.status : 'auto');
   $('#quest-list').innerHTML = rows
     .map(([t, st]) => {
@@ -776,7 +798,7 @@ function renderSettings() {
   `;
 }
 
-// ------------------------------------------------------------------ views (Map / Ammo / Gunsmith)
+// ------------------------------------------------------------------ views (Map / Ammo / Gunsmith / Bosses)
 let currentView = 'map';
 async function showView(name) {
   currentView = name;
@@ -785,8 +807,13 @@ async function showView(name) {
   $('#body').hidden = name !== 'map';
   $('#view-ammo').hidden = name !== 'ammo';
   $('#view-guns').hidden = name !== 'guns';
+  $('#view-bosses').hidden = name !== 'bosses';
   if (name === 'map') {
     mapView.map?.invalidateSize();
+    return;
+  }
+  if (name === 'bosses') {
+    BossesView.render();
     return;
   }
   renderArmoryView();
@@ -802,7 +829,8 @@ async function showView(name) {
 window.showView = showView;
 
 function renderArmoryView() {
-  if (currentView === 'map') return;
+  if (currentView === 'bosses') BossesView.render();
+  if (currentView === 'map' || currentView === 'bosses') return;
   if (AV.armory && AV.dataMode !== S.state.dataMode && !AV.loading) {
     // switched between PvE and PvP data: reload, then draw again
     ArmoryViews.ensureArmory().then(renderArmoryView, (err) => toast(`Could not load weapon data: ${err.message || err}`, 'error'));
@@ -1257,6 +1285,7 @@ function wire() {
     if (v) showView(v);
   });
   ArmoryViews.wireAmmo();
+  BossesView.wire();
   ArmoryViews.wireGuns();
   $('#floor-select').addEventListener('change', (e) => mapView.setFloor(e.target.value || null));
   $('#filter-seg').addEventListener('click', (e) => {
@@ -1315,6 +1344,13 @@ function wire() {
   $('#quest-search').addEventListener('input', renderQuestList);
   $('#quest-status-filter').addEventListener('change', renderQuestList);
   $('#quest-unlock-filter').addEventListener('change', renderQuestList);
+  $('#quest-counts').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-status]');
+    if (!b) return;
+    const sel = $('#quest-status-filter');
+    sel.value = sel.value === b.dataset.status ? '' : b.dataset.status;
+    renderQuestList();
+  });
   $('#quest-sort').addEventListener('change', (e) => {
     S.state.settings.questSort = e.target.value;
     renderQuestList();

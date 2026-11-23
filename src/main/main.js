@@ -473,7 +473,10 @@ function registerIpc() {
 
 // ---------------------------------------------------------------- app
 function createWindow() {
+  // TQM_HIDDEN: dev aid, renders offscreen so test runs never put a window on screen
+  const hidden = !!process.env.TQM_HIDDEN;
   win = new BrowserWindow({
+    show: !hidden,
     width: Number(process.env.TQM_WIDTH) || 1500, // TQM_WIDTH: dev aid for testing layouts
     height: Number(process.env.TQM_HEIGHT) || 950, // TQM_HEIGHT: same, for short windows
     minWidth: 900,
@@ -488,6 +491,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      offscreen: hidden,
     },
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

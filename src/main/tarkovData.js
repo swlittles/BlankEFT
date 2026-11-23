@@ -266,6 +266,8 @@ function buildModel({ dataMode, tasks, tasksEn, maps, mapsEn, traders, tradersEn
     bosses: Bosses.bossSpots(m, maps.data.mobs || {}, tMap),
   }));
   const mapById = Object.fromEntries(mapList.map((m) => [m.id, m]));
+  // Bosses tab: every boss, guard and dangerous AI with the maps they spawn on and what they wear
+  const bossCatalog = Bosses.bossCatalog(Object.values(maps.data.maps).filter((m) => mapById[m.id]), maps.data.mobs || {}, tMap, ref);
 
   // Where to get each key that opens something on a map (trader, barter, flea).
   const keyIds = new Set(mapList.flatMap((m) => m.locks.map((l) => l.key)));
@@ -379,6 +381,7 @@ function buildModel({ dataMode, tasks, tasksEn, maps, mapsEn, traders, tradersEn
     mapById,
     tasks: taskList,
     items: itemRefs,
+    bossCatalog,
     display: displayByNormalized,
   };
 }

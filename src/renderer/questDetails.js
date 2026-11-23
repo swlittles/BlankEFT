@@ -71,6 +71,13 @@ function unlocksHtml(t) {
   return html;
 }
 
+const LIGHTBOX_HTML = `<div class="lightbox" hidden>
+    <button class="lb-nav lb-prev" data-lb="-1" title="Previous (←)">‹</button>
+    <img alt="">
+    <button class="lb-nav lb-next" data-lb="1" title="Next (→)">›</button>
+    <div class="caption"></div>
+  </div>`;
+
 function openQuestDetails(taskId) {
   const t = S.taskById.get(taskId);
   if (!t) return;
@@ -111,12 +118,7 @@ function openQuestDetails(taskId) {
       ${st.status !== 'completed' ? '<button class="mark-complete" data-complete title="Mark this whole quest as completed. You can undo it.">☐ Mark Complete</button>' : ''}
     </footer>
   </div>
-  <div class="lightbox" hidden>
-    <button class="lb-nav lb-prev" data-lb="-1" title="Previous (←)">‹</button>
-    <img alt="">
-    <button class="lb-nav lb-next" data-lb="1" title="Next (→)">›</button>
-    <div class="caption"></div>
-  </div>`;
+  ${LIGHTBOX_HTML}`;
   el.hidden = false;
   el.dataset.task = t.id;
   el.querySelector('[data-close]').focus();
@@ -162,6 +164,22 @@ function showLightbox(list, index) {
   lb.hidden = false;
 }
 
+/** Just the enlarged-picture viewer, without a quest panel behind it (used by the Bosses tab). */
+function showPictures(list, index = 0) {
+  if (!list?.length) return;
+  const el = document.getElementById('modal');
+  el.innerHTML = LIGHTBOX_HTML;
+  el.dataset.task = '';
+  el.hidden = false;
+  showLightbox(list, index);
+}
+
+// Closing the enlarged picture also closes the modal when there's no quest panel behind it
+function hideLightbox(el, lb) {
+  lb.hidden = true;
+  if (!el.querySelector('.modal-card')) closeQuestDetails();
+}
+
 function closeQuestDetails() {
   const el = document.getElementById('modal');
   el.hidden = true;
@@ -176,7 +194,7 @@ function wireQuestDetails() {
     if (lb && !lb.hidden) {
       const nav = e.target.closest('[data-lb]');
       if (nav) return showLightbox(lbList, lbIndex + Number(nav.dataset.lb));
-      lb.hidden = true; // any other click closes the enlarged picture
+      hideLightbox(el, lb); // any other click closes the enlarged picture
       return;
     }
     const pic = e.target.closest('[data-pic]');
@@ -210,9 +228,9 @@ function wireQuestDetails() {
       return showLightbox(lbList, lbIndex + (e.key === 'ArrowRight' ? 1 : -1));
     }
     if (e.key !== 'Escape') return;
-    if (lb && !lb.hidden) lb.hidden = true;
+    if (lb && !lb.hidden) hideLightbox(el, lb);
     else closeQuestDetails();
   });
 }
 
-window.QuestDetails = { open: openQuestDetails, close: closeQuestDetails, wire: wireQuestDetails };
+window.QuestDetails = { open: openQuestDetails, close: closeQuestDetails, wire: wireQuestDetails, showPictures };
