@@ -5,6 +5,7 @@ const path = require('path');
 const { buildArmory } = require('./armoryData');
 const { CONTAINERS } = require('../renderer/loot');
 const Bosses = require('../renderer/bosses');
+const { keyCatalog } = require('./keyCatalog');
 
 const JSON_BASE = 'https://json.tarkov.dev';
 const MAPS_CONFIG_URL = 'https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/src/data/maps.json';
@@ -269,8 +270,8 @@ function buildModel({ dataMode, tasks, tasksEn, maps, mapsEn, traders, tradersEn
   // Bosses tab: every boss, guard and dangerous AI with the maps they spawn on and what they wear
   const bossCatalog = Bosses.bossCatalog(Object.values(maps.data.maps).filter((m) => mapById[m.id]), maps.data.mobs || {}, tMap, ref);
 
-  // Where to get each key that opens something on a map (trader, barter, flea).
-  const keyIds = new Set(mapList.flatMap((m) => m.locks.map((l) => l.key)));
+  // Where to get each key (trader, barter, flea): every key item, plus any lock key not typed as one.
+  const keyIds = new Set([...mapList.flatMap((m) => m.locks.map((l) => l.key)), ...Object.values(allItems).filter((it) => it.types?.includes('keys')).map((it) => ref(it.id))]);
   const bartersFor = {};
   for (const b of barters?.data || []) {
     const id = b.offeredItem?.item;
@@ -283,12 +284,15 @@ function buildModel({ dataMode, tasks, tasksEn, maps, mapsEn, traders, tradersEn
       sources.push({ kind: 'trader', trader: traderById[b.trader]?.name || b.trader, level: b.minTraderLevel || 1, taskUnlock: b.taskUnlock || null, price: b.price, currency: b.currency });
     }
     for (const b of bartersFor[id] || []) {
-      sources.push({ kind: 'barter', trader: traderById[b.trader]?.name || b.trader, level: b.minTraderLevel || 1, taskUnlock: b.taskUnlock || null });
+      const items = (b.requiredItems || []).map((r) => ({ id: ref(r.item), count: r.count })).filter((r) => r.id);
+      sources.push({ kind: 'barter', trader: traderById[b.trader]?.name || b.trader, level: b.minTraderLevel || 1, taskUnlock: b.taskUnlock || null, items });
     }
     const flea = it?.avg24hPrice || it?.lastLowPrice;
     if (it && !it.types?.includes('noFlea') && flea) sources.push({ kind: 'flea', price: flea });
     if (itemRefs[id]) itemRefs[id].sources = sources;
   }
+  // Keys tab: which map each key belongs to, where it spawns, which quests give or need it
+  const keys = keyCatalog({ keyIds, maps: Object.values(maps.data.maps).filter((m) => mapById[m.id]), tasks: Object.values(tasks.data.tasks), nameOf: (id) => itemRefs[id]?.name });
 
   // Trader offers and barters that a quest unlocks, from both the quest rewards and the item data.
   const unlocksByTask = {};
@@ -382,6 +386,7 @@ function buildModel({ dataMode, tasks, tasksEn, maps, mapsEn, traders, tradersEn
     tasks: taskList,
     items: itemRefs,
     bossCatalog,
+    keys,
     display: displayByNormalized,
   };
 }

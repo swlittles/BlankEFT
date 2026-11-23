@@ -1,5 +1,5 @@
 'use strict';
-/* global MapView, escapeHtml, Planner, Loot, ArmoryViews, AV, QuestDetails, BossesView */
+/* global MapView, escapeHtml, Planner, Loot, ArmoryViews, AV, QuestDetails, BossesView, KeysView */
 
 const $ = (sel) => document.querySelector(sel);
 const STATUS_LABEL = { started: 'Active', available: 'Available', completed: 'Completed', failed: 'Failed', locked: 'Locked' };
@@ -247,7 +247,8 @@ function taskOnMap(t, mapId) {
 }
 
 // Map variants count as one location (Night Factory = Factory, Ground Zero 21+ = Ground Zero…)
-const baseMap = (id) => (S.mapById.get(id)?.normalizedName || id).replace(/^(night|infected)-/, '').replace(/-(21|tutorial|dark)$/, '');
+const baseMap = (id) =>
+  (S.mapById.get(id)?.normalizedName || id).replace(/^infected-lab$/, 'the-lab').replace(/^(night|infected)-/, '').replace(/-(21|tutorial|dark)$/, '');
 
 /**
  * "Location: any" quests: on this map only because their steps list nearly every map. A quest with
@@ -808,12 +809,13 @@ async function showView(name) {
   $('#view-ammo').hidden = name !== 'ammo';
   $('#view-guns').hidden = name !== 'guns';
   $('#view-bosses').hidden = name !== 'bosses';
+  $('#view-keys').hidden = name !== 'keys';
   if (name === 'map') {
     mapView.map?.invalidateSize();
     return;
   }
-  if (name === 'bosses') {
-    BossesView.render();
+  if (name === 'bosses' || name === 'keys') {
+    (name === 'bosses' ? BossesView : KeysView).render();
     return;
   }
   renderArmoryView();
@@ -830,7 +832,8 @@ window.showView = showView;
 
 function renderArmoryView() {
   if (currentView === 'bosses') BossesView.render();
-  if (currentView === 'map' || currentView === 'bosses') return;
+  if (currentView === 'keys') KeysView.render();
+  if (['map', 'bosses', 'keys'].includes(currentView)) return;
   if (AV.armory && AV.dataMode !== S.state.dataMode && !AV.loading) {
     // switched between PvE and PvP data: reload, then draw again
     ArmoryViews.ensureArmory().then(renderArmoryView, (err) => toast(`Could not load weapon data: ${err.message || err}`, 'error'));
@@ -1286,6 +1289,7 @@ function wire() {
   });
   ArmoryViews.wireAmmo();
   BossesView.wire();
+  KeysView.wire();
   ArmoryViews.wireGuns();
   $('#floor-select').addEventListener('change', (e) => mapView.setFloor(e.target.value || null));
   $('#filter-seg').addEventListener('click', (e) => {

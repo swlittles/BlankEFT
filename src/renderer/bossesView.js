@@ -70,17 +70,22 @@ function renderBosses() {
     BV.data = S.data;
     BV.sig = '';
     const maps = [...new Map(catalog.flatMap((c) => c.maps.map((m) => [m.map, m.name]))).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+    const perMap = (id) => catalog.filter((c) => c.maps.some((m) => m.map === id)).length;
     if (BV.map && !maps.some(([id]) => id === BV.map)) BV.map = '';
     el.innerHTML = `<div class="bv-tools">
         <input id="bv-search" type="search" placeholder="Search bosses, guards, maps or spots…" value="${escapeHtml(BV.query)}">
-        <select id="bv-map" title="Only show who can spawn on this map"><option value="">All maps</option>${maps.map(([id, name]) => `<option value="${id}" ${id === BV.map ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('')}</select>
         <span class="muted small">Spawn chances per raid from tarkov.dev (${S.data.dataMode === 'pve' ? 'PvE' : 'PvP'} data). Pictures: tarkov.dev and the EFT wiki, click to enlarge.</span>
+      </div>
+      <div class="map-chips" title="Only show who can spawn on this map">
+        <button class="chip-btn" data-bv-filter="">All maps <span class="muted">${catalog.length}</span></button>
+        ${maps.map(([id, name]) => `<button class="chip-btn" data-bv-filter="${id}">${escapeHtml(name)} <span class="muted">${perMap(id)}</span></button>`).join('')}
       </div>
       <div class="bv-list" id="bv-list"></div>`;
   }
   const sig = `${BV.query}|${BV.map}`;
   if (BV.sig === sig) return;
   BV.sig = sig;
+  for (const b of el.querySelectorAll('[data-bv-filter]')) b.classList.toggle('on', b.dataset.bvFilter === BV.map);
   const list = document.getElementById('bv-list');
   const shown = catalog.filter(bvMatches);
   let html = '';
@@ -158,12 +163,12 @@ function wireBosses() {
       renderBosses();
     }
   });
-  el.addEventListener('change', (e) => {
-    if (e.target.id !== 'bv-map') return;
-    BV.map = e.target.value;
-    renderBosses();
-  });
   el.addEventListener('click', async (e) => {
+    const f = e.target.closest('[data-bv-filter]');
+    if (f) {
+      BV.map = f.dataset.bvFilter;
+      return renderBosses();
+    }
     const pic = e.target.closest('[data-bv-pic]');
     if (pic) {
       const c = S.data.bossCatalog.find((x) => x.key === pic.closest('[data-boss]').dataset.boss);
