@@ -1,7 +1,7 @@
 {
   "name": "tarkov-quest-map",
   "productName": "Tarkov Quest Map",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Escape from Tarkov quest map and raid planner for Windows. Reads the game logs (read-only) to track quests, detect the current map and show quest locations.",
   "main": "src/main/main.js",
   "private": true,
