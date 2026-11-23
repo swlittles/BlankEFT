@@ -14,6 +14,7 @@ const DEFAULTS = {
     followRaidMap: true,
     alwaysOnTop: false,
     sidebarCollapsed: false,
+    filtersCollapsed: false, // the Map filters panel on the left
     showLocks: false,
     extractFactions: ['pmc', 'scav', 'shared'], // which extracts to show
     showLoot: false,

@@ -18,6 +18,7 @@ A Windows desktop companion for Escape from Tarkov that:
 - **Scav runs:** in **Raid plan**, switch to **Scav run** and tick what you want: 🔫 weapon boxes, 🧨 ammo and grenade boxes, 🦺 bodies (armor, rigs, guns), 💰 safes and PCs, 💊 meds, 🔧 tech crates, 📦 hidden stashes or 🗝️ key spawns. The app groups each map's containers into hotspots (rooms and buildings with the most of what you picked, rarer kinds weighted up) and picks the stops with the most loot per metre walked, from a Scav spawn to a Scav extract. Choose Quick, Normal or Long, or tick spots yourself (or click a dashed **+** on the map). Mark a stop ✓ looted to drop it for this raid. Containers come from tarkov.dev and are fixed spots; their contents are random. tarkov.dev's loose-loot data has no guns, armor or ammo, so those come from boxes and bodies.
 - **Loot layer (📦 Loot):** shows the same containers on the map in any filter, coloured by kind, with a legend to pick the kinds. Hover a dot to see what it is; loose spots list the valuable items they can spawn.
 - **Boss spawns (💀 Bosses, on by default):** a skull on every spot a boss can spawn. Hover it to see which bosses can appear there, the chance of each, and their guards. Raiders, Rogues, Cultists and the Goons are included.
+- **Map filters panel (left of the map):** the map and floor, which quests get markers (Active / + Available / All / Plan), and the layers (Extracts, Spawns, Keys, Bosses, Loot) with their options underneath. Hide it with the ‹ tab on the map's left edge for a bigger map; it remembers the choice.
 - **Live position:** press your in-game screenshot key during a raid and an arrow shows where you are and which way you're facing. The arrow direction was checked against 209 pairs of real screenshots and on every map rotation.
 
 PvE, PvP and PvP Season each keep separate progress and their own prestige level, the same way the game does. PvE is shown by default. Switch with **Mode** in the top bar, or pick "Follow the game".
@@ -33,7 +34,7 @@ Download `BlankEFT-Setup-x.y.z.exe` from the [latest release](https://github.com
 
 It finds your game by itself: Steam, the BSG launcher, the running game, common folders on every drive, and as a last resort a quick scan for `EscapeFromTarkov.exe`. If it still can't find it, pick the folder in **Settings**.
 
-**Updates are automatic.** The app checks GitHub Releases when it starts and every 2 hours. It downloads a new version in the background, then installs it when you click **Update** in the top bar or the next time you close the app. Your progress (`%APPDATA%Tarkov Quest Map`) is kept.
+**Updates are automatic.** The app checks GitHub Releases when it starts and every 2 hours. It downloads a new version in the background, then installs it when you click **Update** in the top bar or the next time you close the app. Your progress (`%APPDATA%\Tarkov Quest Map`) is kept.
 
 ## Run from source
 

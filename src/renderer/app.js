@@ -314,6 +314,11 @@ function applySidebar() {
   const b = $('#sidebar-toggle');
   b.textContent = collapsed ? '‹' : '›';
   b.title = collapsed ? 'Show the sidebar' : 'Hide the sidebar';
+  const fc = !!S.state.settings.filtersCollapsed;
+  document.body.classList.toggle('filters-collapsed', fc);
+  const f = $('#filters-toggle');
+  f.textContent = fc ? '›' : '‹';
+  f.title = fc ? 'Show map filters' : 'Hide map filters';
 }
 
 function renderFloors() {
@@ -359,6 +364,9 @@ function bossSpots(map) {
 }
 
 // Loot layer: a Scav-run plan on the Plan filter shows its own categories; otherwise the Loot toggle.
+// compact names for the Map filters panel (the full name and hint show on hover)
+const LOOT_PANEL_LABEL = { weapons: 'Weapon boxes', ammo: 'Ammo boxes', bodies: 'Bodies', valuables: 'Valuables', meds: 'Medical', tech: 'Tech & tools', stashes: 'Stashes', keys: 'Key spawns', misc: 'Small containers' };
+
 function renderLoot(map) {
   if (!map) return;
   const scavRun = isScav() && S.state.settings.markerFilter === 'plan';
@@ -381,7 +389,7 @@ function renderLoot(map) {
       legend.innerHTML =
         '<span class="legend-title">Loot</span>' +
         Loot.LOOT_CATS.filter((c) => counts[c.id])
-          .map((c) => `<label title="${escapeHtml(c.hint)}"><input type="checkbox" data-loot="${c.id}" ${on.has(c.id) ? 'checked' : ''}> <span class="lg-dot" style="background:${c.color}"></span>${c.icon} ${escapeHtml(c.label)} <span class="muted">${counts[c.id]}</span></label>`)
+          .map((c) => `<label title="${escapeHtml(`${c.icon} ${c.label}: ${c.hint}`)}"><input type="checkbox" data-loot="${c.id}" ${on.has(c.id) ? 'checked' : ''}> <span class="lg-dot" style="background:${c.color}"></span>${escapeHtml(LOOT_PANEL_LABEL[c.id] || c.label)} <span class="muted">${counts[c.id]}</span></label>`)
           .join('') +
         '<div class="legend-kinds">Containers are fixed; what\'s inside is random.<br>Small dots are loose-loot spots.</div>';
     }
@@ -1260,6 +1268,11 @@ function wire() {
     window.tqm.setSettings({ lootCats: cats });
   });
   wirePlan();
+  $('#filters-toggle').addEventListener('click', () => {
+    S.state.settings.filtersCollapsed = !S.state.settings.filtersCollapsed;
+    applySidebar();
+    window.tqm.setSettings({ filtersCollapsed: S.state.settings.filtersCollapsed });
+  });
   $('#sidebar-toggle').addEventListener('click', () => {
     S.state.settings.sidebarCollapsed = !S.state.settings.sidebarCollapsed;
     applySidebar(); // instant; the setting is saved in the background
