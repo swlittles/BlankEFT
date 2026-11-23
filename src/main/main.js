@@ -9,6 +9,7 @@ const { findLogsDir, findScreenshotsDir } = require('./eftPaths');
 const { computeTaskStates } = require('./questState');
 const { dataModeFor, parseScreenshotName } = require('./logParser');
 const { initUpdater } = require('./updater');
+const { WikiImages } = require('./wikiImages');
 
 const MODES = ['pve', 'regular', 'pvpseason'];
 const MODE_LABELS = { pve: 'PvE', regular: 'PvP', pvpseason: 'PvP Season' };
@@ -16,6 +17,7 @@ const MODE_LABELS = { pve: 'PvE', regular: 'PvP', pvpseason: 'PvP Season' };
 let win = null;
 let store;
 let data;
+let wiki;
 let watcher = null;
 let screenshotWatcher = null;
 
@@ -460,6 +462,9 @@ function registerIpc() {
     return r.filePaths[0];
   });
 
+  // pictures from a quest's wiki page, for the Details panel
+  ipcMain.handle('wiki:images', (_e, link) => wiki.forLink(String(link || '')));
+
   ipcMain.handle('link:open', (_e, url) => {
     const u = new URL(String(url));
     if (u.protocol === 'https:') shell.openExternal(u.toString());
@@ -534,6 +539,7 @@ app.whenReady().then(async () => {
     if (error) send('toast', { kind: 'save-error', error });
   };
   data = new TarkovData(path.join(app.getPath('userData'), 'cache'));
+  wiki = new WikiImages(path.join(app.getPath('userData'), 'cache'));
   registerIpc();
   createWindow();
   initUpdater(send, () => store.flush());

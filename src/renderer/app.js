@@ -149,10 +149,26 @@ function togglePlanned(taskId) {
   return savePlan({ tasks });
 }
 
+const isFinished = (id) => ['completed', 'failed'].includes(S.state.taskStates?.[id]?.status);
+
 function plannedTasks() {
   return getPlan()
-    .tasks.map((id) => S.taskById.get(id))
+    .tasks.filter((id) => !isFinished(id))
+    .map((id) => S.taskById.get(id))
     .filter(Boolean);
+}
+
+// Quests you hand in (or fail) drop out of every map's raid plan on their own.
+function prunePlans() {
+  if (!S.data || !S.state?.plans) return;
+  for (const mapId of Object.keys(S.state.plans)) {
+    const plan = getPlan(mapId);
+    const tasks = plan.tasks.filter((id) => !isFinished(id));
+    if (tasks.length === plan.tasks.length) continue;
+    const next = { ...plan, tasks };
+    S.state.plans = { ...S.state.plans, [mapId]: next };
+    window.tqm.setPlan(mapId, next);
+  }
 }
 
 // During a raid, your newest screenshot / logged position is the start, so the route re-plans from
@@ -389,6 +405,40 @@ function statusChip(state) {
   return `<span class="chip status-${state.status}" title="${escapeHtml(SOURCE_LABEL[state.source] || '')}">${STATUS_LABEL[state.status]}${state.source === 'manual' ? ' ✎' : ''}</span>`;
 }
 
+/**
+ * A quest card: name (click to zoom the map to it), key icon, the steps on this map with tick boxes,
+ * and Plan / Details / Wiki / Mark Complete buttons. Used by This map and the Raid plan.
+ */
+function questCardHtml(t, status, { inPlan = false } = {}) {
+  const done = S.state.objectivesDone || {};
+  let html = '';
+  const objs = t.objectives.filter((o) => objectiveOnMap(o, S.mapId));
+  const hasMarkers = objs.some((o) => o.zones.some((z) => z.map === S.mapId) || o.possibleLocations.some((l) => l.map === S.mapId));
+  html += `<div class="quest-card status-${status}${inPlan ? ' in-plan' : ''}" data-task="${t.id}">
+    <div class="qc-head">
+      <button class="link qc-name" data-act="focus" ${hasMarkers ? '' : 'disabled title="No map markers for this quest"'}>${escapeHtml(t.name)}</button>${keyIcon(t)}
+      ${inPlan ? '<span class="plan-chip" title="This quest is in your raid plan for this map">✓ Raid plan</span>' : ''}<span class="trader">${escapeHtml(t.trader.name)}</span>
+    </div>
+    <div class="qc-unlocks">${unlockBadges(t)}
+    </div>
+    <ul class="objectives">${objs
+      .map((o) => {
+        const located = o.zones.some((z) => z.map === S.mapId) || o.possibleLocations.some((l) => l.map === S.mapId);
+        return `<li class="${done[o.id] ? 'done' : ''}"><label><input type="checkbox" data-obj="${o.id}" ${done[o.id] ? 'checked' : ''}/> <span>${escapeHtml(o.description)}${o.optional ? ' <em>(optional)</em>' : ''}</span>${located ? '<span class="has-marker" title="Has map marker">◆</span>' : ''}</label></li>`;
+      })
+      .join('')}</ul>
+    <div class="qc-actions">
+      <button data-act="plan" class="${inPlan ? 'planned' : ''}" title="${inPlan ? 'Remove from the raid plan' : 'Add to the raid plan for this map'}">${inPlan ? '✓ In raid plan' : '+ Plan'}</button>
+      <button data-act="details" title="Pictures of the quest, its items, keys and rewards">🖼 Details</button>
+      ${status === 'available' ? '<button data-act="start">Mark started</button>' : ''}
+      ${t.wikiLink ? '<button data-act="wiki">Wiki</button>' : ''}
+      <span class="spacer"></span>
+      ${status === 'completed' ? '<span class="muted small">✓ Completed</span>' : '<button data-act="complete" class="mark-complete" title="Mark this whole quest as completed. You can undo it.">☐ Mark Complete</button>'}
+    </div>
+  </div>`;
+  return html;
+}
+
 function renderHere() {
   const el = $('#here-list');
   if (!S.data || !S.mapId) {
@@ -421,33 +471,7 @@ function renderHere() {
     tasks.sort((a, b) => a.trader.name.localeCompare(b.trader.name) || a.name.localeCompare(b.name));
     html += `<h3 class="group-title status-${status}">${STATUS_LABEL[status]} <span class="count">${tasks.length}</span></h3>`;
     if (!tasks.length) html += `<p class="muted small">No ${STATUS_LABEL[status].toLowerCase()} quests on this map.</p>`;
-    for (const t of tasks) {
-      const objs = t.objectives.filter((o) => objectiveOnMap(o, S.mapId));
-      const hasMarkers = objs.some((o) => o.zones.some((z) => z.map === S.mapId) || o.possibleLocations.some((l) => l.map === S.mapId));
-      const inPlan = planIds.has(t.id);
-      html += `<div class="quest-card status-${status}${inPlan ? ' in-plan' : ''}" data-task="${t.id}">
-        <div class="qc-head">
-          <button class="link qc-name" data-act="focus" ${hasMarkers ? '' : 'disabled title="No map markers for this quest"'}>${escapeHtml(t.name)}</button>
-          ${inPlan ? '<span class="plan-chip" title="This quest is in your raid plan for this map">✓ Raid plan</span>' : ''}<span class="trader">${escapeHtml(t.trader.name)}</span>
-        </div>
-        <div class="qc-unlocks">${unlockBadges(t)}
-        </div>
-        <ul class="objectives">${objs
-          .map((o) => {
-            const located = o.zones.some((z) => z.map === S.mapId) || o.possibleLocations.some((l) => l.map === S.mapId);
-            return `<li class="${done[o.id] ? 'done' : ''}"><label><input type="checkbox" data-obj="${o.id}" ${done[o.id] ? 'checked' : ''}/> <span>${escapeHtml(o.description)}${o.optional ? ' <em>(optional)</em>' : ''}</span>${located ? '<span class="has-marker" title="Has map marker">◆</span>' : ''}</label></li>`;
-          })
-          .join('')}</ul>
-        <div class="qc-actions">
-          <button data-act="plan" class="${inPlan ? 'planned' : ''}" title="${inPlan ? 'Remove from the raid plan' : 'Add to the raid plan for this map'}">${inPlan ? '✓ In raid plan' : '+ Plan'}</button>
-          <button data-act="details" title="Pictures of the quest, its items, keys and rewards">🖼 Details</button>
-          ${status === 'available' ? '<button data-act="start">Mark started</button>' : ''}
-          ${t.wikiLink ? '<button data-act="wiki">Wiki</button>' : ''}
-          <span class="spacer"></span>
-          ${status === 'completed' ? '<span class="muted small">✓ Completed</span>' : '<button data-act="complete" class="mark-complete" title="Mark this whole quest as completed. You can undo it.">☐ Mark Complete</button>'}
-        </div>
-      </div>`;
-    }
+    for (const t of tasks) html += questCardHtml(t, status, { inPlan: planIds.has(t.id) });
   }
   el.innerHTML = html;
 }
@@ -502,6 +526,85 @@ function unlockInfo(taskId) {
 
 function unlockLine(u) {
   return `${S.data.items?.[u.id]?.name || u.id} (${u.trader} LL${u.level}${u.kind === 'barter' ? ' barter' : ''})`;
+}
+
+// 🔑 after a quest's name when it needs a key. Hover (or focus) it to see the keys: see wireKeyPopover.
+function keyGroups(t) {
+  return (t.neededKeys || []).filter((nk) => nk.keys?.length);
+}
+function keyIcon(t) {
+  if (!keyGroups(t).length) return '';
+  return `<span class="key-icon" data-key-task="${t.id}" tabindex="0" aria-label="Needs a key">🔑</span>`;
+}
+
+function keyPopoverHtml(t) {
+  // current map first, then the others, keys for "any map" last
+  const rank = (nk) => (nk.map === S.mapId ? 0 : nk.map ? 1 : 2);
+  const groups = [...keyGroups(t)].sort((a, b) => rank(a) - rank(b));
+  return groups
+    .map((nk) => {
+      const where = nk.map ? S.mapById.get(nk.map)?.name || 'Other map' : 'Any map';
+      const keys = nk.keys
+        .map((id) => {
+          const it = S.data.items?.[id] || { name: id };
+          const img = it.image || it.iconLink;
+          return `<div class="kp-key">${img ? `<img src="${escapeHtml(img)}" alt="">` : '<span class="kp-noimg">🔑</span>'}<span>${escapeHtml(it.name)}</span></div>`;
+        })
+        .join('');
+      return `<div class="kp-group"><div class="kp-map">${escapeHtml(where)}${nk.keys.length > 1 ? ' <span class="muted">(any one)</span>' : ''}</div>${keys}</div>`;
+    })
+    .join('');
+}
+
+function wireKeyPopover() {
+  const pop = document.createElement('div');
+  pop.id = 'key-pop';
+  pop.hidden = true;
+  document.body.appendChild(pop);
+  let current = null;
+  const show = (icon) => {
+    const t = S.taskById.get(icon.dataset.keyTask);
+    if (!t) return;
+    current = icon;
+    pop.innerHTML = `<div class="kp-title">🔑 Keys for ${escapeHtml(t.name)}</div>${keyPopoverHtml(t)}`;
+    pop.hidden = false;
+    const r = icon.getBoundingClientRect();
+    const w = pop.offsetWidth;
+    const h = pop.offsetHeight;
+    let left = Math.min(window.innerWidth - w - 8, Math.max(8, r.left + r.width / 2 - w / 2));
+    let top = r.bottom + 6;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    pop.style.left = `${left}px`;
+    pop.style.top = `${top}px`;
+  };
+  const hide = (icon) => {
+    if (icon && icon !== current) return;
+    current = null;
+    pop.hidden = true;
+  };
+  document.addEventListener('mouseover', (e) => {
+    const icon = e.target.closest?.('.key-icon');
+    if (icon && icon !== current) show(icon);
+  });
+  document.addEventListener('mouseout', (e) => {
+    const icon = e.target.closest?.('.key-icon');
+    if (icon && !icon.contains(e.relatedTarget)) hide(icon);
+  });
+  document.addEventListener('focusin', (e) => {
+    if (e.target.classList?.contains('key-icon')) show(e.target);
+  });
+  document.addEventListener('focusout', (e) => {
+    if (e.target.classList?.contains('key-icon')) hide(e.target);
+  });
+  // the icon sits inside clickable rows: don't let a click on it open or toggle anything
+  document.addEventListener('click', (e) => {
+    if (e.target.closest?.('.key-icon')) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, true);
+  // re-rendered lists drop the icon from under the pointer
+  document.addEventListener('scroll', () => hide(current), true);
 }
 
 function unlockBadges(t) {
@@ -573,7 +676,7 @@ function renderQuestList() {
       const mapName = t.mapId ? S.mapById.get(t.mapId)?.name : '';
       return `<div class="quest-row" data-task="${t.id}">
         <div class="qr-main">
-          <div class="qr-name"><a href="#" data-details title="Show pictures, items and rewards">${escapeHtml(t.name)}</a>${t.kappaRequired ? ' <span class="tag" title="Required for Kappa">K</span>' : ''} ${unlockBadges(t)}</div>
+          <div class="qr-name"><a href="#" data-details title="Show pictures, items and rewards">${escapeHtml(t.name)}</a>${keyIcon(t)}${t.kappaRequired ? ' <span class="tag" title="Required for Kappa">K</span>' : ''} ${unlockBadges(t)}</div>
           <div class="qr-sub muted small">${escapeHtml(t.trader.name)} · lvl ${t.minPlayerLevel}${mapName ? ` · ${escapeHtml(mapName)}` : ''}${completedWhen(st)}</div>
         </div>
         ${statusChip(st)}
@@ -805,7 +908,7 @@ function renderPlan() {
   const pick = (list) =>
     list
       .sort((a, b) => a.name.localeCompare(b.name))
-      .map((t) => `<label class="pick"><input type="checkbox" data-plan-task="${t.id}" ${plan.tasks.includes(t.id) ? 'checked' : ''}/> <span>${escapeHtml(t.name)}</span><button class="icon-btn" data-details-task="${t.id}" title="Details and pictures">🖼</button>${unlockBadges(t)}<span class="trader">${escapeHtml(t.trader.name)}</span></label>`)
+      .map((t) => `<label class="pick"><input type="checkbox" data-plan-task="${t.id}" ${plan.tasks.includes(t.id) ? 'checked' : ''}/> <span>${escapeHtml(t.name)}${keyIcon(t)}</span><button class="icon-btn" data-details-task="${t.id}" title="Details and pictures">🖼</button>${unlockBadges(t)}<span class="trader">${escapeHtml(t.trader.name)}</span></label>`)
       .join('') || '<p class="muted small">None on this map.</p>';
   const extracts = map.extracts.filter((e) => e.faction !== 'scav');
   const pos = S.state.position && S.state.position.map === S.mapId ? S.state.position : null;
@@ -840,12 +943,14 @@ function renderPlan() {
     </div>
   </div>
   <ol class="route">${route.stops
-    .map((s, i) => `<li data-stop="${i}"><span class="num">${i + 1}</span><div><b>${escapeHtml(s.task.name)}</b><div class="small">${escapeHtml(s.objective.description)}</div></div></li>`)
+    .map((s, i) => `<li data-stop="${i}" title="Show on the map"><span class="num">${i + 1}</span><div class="stop-body"><b>${escapeHtml(s.task.name)}</b>${keyIcon(s.task)}<div class="small">${escapeHtml(s.objective.description)}</div></div><button class="icon-btn stop-details" data-details-task="${s.task.id}" title="Details and pictures">🖼</button></li>`)
     .join('')}</ol>
   ${route.stops.length ? `<p class="muted small">About ${route.length} m in straight lines. Real paths around walls and buildings will be longer.</p>` : ''}
   <p class="muted small">${route.startLive ? '📍 Following you: the route re-plans each time you take a screenshot.' : 'In raid, take a screenshot and the route re-plans from where you are.'}</p>
-  ${route.anywhere.length ? `<h4>Anywhere on this map</h4><ul class="anywhere">${route.anywhere.map((a) => `<li><b>${escapeHtml(a.task.name)}</b>: ${escapeHtml(a.objective.description)}</li>`).join('')}</ul>` : ''}
-  <button id="plan-fit" class="small-btn">Show whole route</button>`;
+  ${route.anywhere.length ? `<h4>Anywhere on this map</h4><ul class="anywhere">${route.anywhere.map((a) => `<li><b>${escapeHtml(a.task.name)}</b>${keyIcon(a.task)}: ${escapeHtml(a.objective.description)}</li>`).join('')}</ul>` : ''}
+  <button id="plan-fit" class="small-btn">Show whole route</button>
+  <h3>Quests in this plan <span class="count">${tasks.length}</span></h3>
+  <div class="plan-cards">${tasks.map((t) => questCardHtml(t, taskState(t.id).status, { inPlan: true })).join('')}</div>`;
 
   html += '<h3>Bring into the raid</h3>';
   const none = !loadout.keys.length && !loadout.bring.length && !loadout.gear.length && !loadout.questItems.length;
@@ -885,7 +990,7 @@ function wirePlan() {
   });
   el.addEventListener('click', async (e) => {
     const t = e.target.closest('button, li[data-stop]');
-    if (!t) return;
+    if (!t || t.dataset.act) return; // quest card buttons are handled by wireQuestCards
     if (t.dataset.detailsTask) {
       e.preventDefault();
       return QuestDetails.open(t.dataset.detailsTask);
@@ -1104,7 +1209,27 @@ function toast(text, kind = 'info', action = null) {
 }
 
 // ------------------------------------------------------------------ events
+function wireQuestCards(el) {
+  el.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button');
+    const card = e.target.closest('.quest-card');
+    if (!btn || !card) return;
+    const id = card.dataset.task;
+    const act = btn.dataset.act;
+    if (act === 'focus') mapView.focusTask(id);
+    else if (act === 'details') QuestDetails.open(id);
+    else if (act === 'plan') await togglePlanned(id);
+    else if (act === 'complete') await markComplete(id);
+    else if (act === 'start') await window.tqm.setTask(id, 'started');
+    else if (act === 'wiki') window.tqm.openLink(S.taskById.get(id).wikiLink);
+  });
+  el.addEventListener('change', (e) => {
+    if (e.target.dataset.obj) window.tqm.setObjective(e.target.dataset.obj, e.target.checked);
+  });
+}
+
 function wire() {
+  wireKeyPopover();
   $('#map-select').addEventListener('change', (e) => selectMap(e.target.value));
   $('#view-seg').addEventListener('click', (e) => {
     const v = e.target.closest('button')?.dataset.view;
@@ -1150,22 +1275,8 @@ function wire() {
 
   for (const b of document.querySelectorAll('.tabs button')) b.addEventListener('click', () => showTab(b.dataset.tab));
 
-  $('#tab-here').addEventListener('click', async (e) => {
-    const btn = e.target.closest('button');
-    const card = e.target.closest('.quest-card');
-    if (!btn || !card) return;
-    const id = card.dataset.task;
-    const act = btn.dataset.act;
-    if (act === 'focus') mapView.focusTask(id);
-    else if (act === 'details') QuestDetails.open(id);
-    else if (act === 'plan') await togglePlanned(id);
-    else if (act === 'complete') await markComplete(id);
-    else if (act === 'start') await window.tqm.setTask(id, 'started');
-    else if (act === 'wiki') window.tqm.openLink(S.taskById.get(id).wikiLink);
-  });
-  $('#tab-here').addEventListener('change', (e) => {
-    if (e.target.dataset.obj) window.tqm.setObjective(e.target.dataset.obj, e.target.checked);
-  });
+  // quest cards: This map, and the Raid plan's "Quests in this plan"
+  for (const tab of ['#tab-here', '#tab-plan']) wireQuestCards($(tab));
 
   $('#here-search').addEventListener('input', renderHere);
   $('#here-search').addEventListener('keydown', (e) => {
@@ -1263,6 +1374,7 @@ async function onState(st) {
     }
   }
   if (!S.mapId && S.data) await selectMap(selectableMaps()[0]?.id);
+  prunePlans();
   renderAll();
 }
 

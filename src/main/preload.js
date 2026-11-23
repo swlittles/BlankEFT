@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('tqm', {
   getUpdate: () => ipcRenderer.invoke('update:get'),
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   installUpdate: () => ipcRenderer.invoke('update:install'),
+  wikiImages: (link) => ipcRenderer.invoke('wiki:images', link),
   on: (channel, fn) => {
     if (!['state', 'position', 'toast', 'update'].includes(channel)) return;
     ipcRenderer.on(channel, (_e, payload) => fn(payload));

@@ -1,6 +1,6 @@
 'use strict';
-/* global S, escapeHtml, taskState, statusChip, markComplete, unlockInfo, unlockBadges */
-// "Details" panel for a quest: the in-game task picture, quest items, items to hand over, keys and rewards.
+/* global S, escapeHtml, taskState, statusChip, markComplete, unlockInfo, unlockBadges, keyIcon */
+// "Details" panel for a quest: pictures from its wiki page, quest items, items to hand over, keys and rewards.
 
 const OBJ_ITEM_LABEL = {
   giveItem: 'Hand over',
@@ -83,13 +83,13 @@ function openQuestDetails(taskId) {
   el.innerHTML = `<div class="modal-card" role="dialog" aria-label="${escapeHtml(t.name)}">
     <header>
       <div>
-        <h2>${escapeHtml(t.name)} ${t.kappaRequired ? '<span class="tag" title="Required for Kappa">Kappa</span>' : ''}${t.lightkeeperRequired ? ' <span class="tag">Lightkeeper</span>' : ''} ${unlockBadges(t)}</h2>
+        <h2>${escapeHtml(t.name)}${keyIcon(t)} ${t.kappaRequired ? '<span class="tag" title="Required for Kappa">Kappa</span>' : ''}${t.lightkeeperRequired ? ' <span class="tag">Lightkeeper</span>' : ''} ${unlockBadges(t)}</h2>
         <div class="muted">${escapeHtml(t.trader.name)} · level ${t.minPlayerLevel}${t.mapId ? ` · ${escapeHtml(S.mapById.get(t.mapId)?.name || '')}` : ''}${t.factionName && t.factionName !== 'Any' ? ` · ${escapeHtml(t.factionName)} only` : ''} ${statusChip(st)}</div>
       </div>
       <button class="close" data-close title="Close (Esc)">✕</button>
     </header>
     <div class="modal-body">
-      ${t.image ? `<img class="banner" src="${escapeHtml(t.image)}" alt="" data-zoom="${escapeHtml(t.image)}" data-caption="${escapeHtml(t.name)}">` : ''}
+      ${t.wikiLink ? '<div class="wiki-pics" data-wiki-pics><p class="muted small">Loading pictures from the wiki…</p></div>' : ''}
       <h3>Objectives</h3>
       <ol class="details-objectives">${t.objectives.map(objectiveHtml).join('')}</ol>
       ${keys.length ? `<h3>Keys you'll need</h3>${keys.map((k) => `<div class="obj-label">${escapeHtml(S.mapById.get(k.map)?.name || 'Any map')}${k.keys.length > 1 ? ' (any one)' : ''}</div>${tiles(k.keys)}`).join('')}` : ''}
@@ -111,16 +111,62 @@ function openQuestDetails(taskId) {
       ${st.status !== 'completed' ? '<button class="mark-complete" data-complete title="Mark this whole quest as completed. You can undo it.">☐ Mark Complete</button>' : ''}
     </footer>
   </div>
-  <div class="lightbox" hidden><img alt=""><div class="caption"></div></div>`;
+  <div class="lightbox" hidden>
+    <button class="lb-nav lb-prev" data-lb="-1" title="Previous (←)">‹</button>
+    <img alt="">
+    <button class="lb-nav lb-next" data-lb="1" title="Next (→)">›</button>
+    <div class="caption"></div>
+  </div>`;
   el.hidden = false;
   el.dataset.task = t.id;
   el.querySelector('[data-close]').focus();
+  if (t.wikiLink) loadWikiPictures(t);
+}
+
+// Carousel of the pictures on the quest's wiki page (location shots, where items are...).
+let wikiPics = [];
+async function loadWikiPictures(t) {
+  const el = document.getElementById('modal');
+  const r = await window.tqm.wikiImages(t.wikiLink).catch((err) => ({ images: [], error: String(err) }));
+  const box = el.querySelector('[data-wiki-pics]');
+  if (!box || el.dataset.task !== t.id) return; // closed, or another quest opened meanwhile
+  wikiPics = r.images || [];
+  if (!wikiPics.length) {
+    box.innerHTML = r.error ? '<p class="muted small">Couldn’t load pictures from the wiki.</p>' : '<p class="muted small">No pictures on this quest’s wiki page.</p>';
+    return;
+  }
+  box.innerHTML = `<h3>Pictures <span class="count">${wikiPics.length}</span><span class="muted small"> · from the wiki, click to enlarge</span></h3>
+    <div class="carousel">
+      <button class="car-nav" data-car="-1" title="Scroll left">‹</button>
+      <div class="car-track">${wikiPics
+        .map(
+          (p, i) => `<figure class="car-item" data-pic="${i}" title="${escapeHtml(p.caption || 'Enlarge')}"><img src="${escapeHtml(p.thumb)}" alt="">${p.caption ? `<figcaption>${escapeHtml(p.caption)}</figcaption>` : ''}</figure>`,
+        )
+        .join('')}</div>
+      <button class="car-nav" data-car="1" title="Scroll right">›</button>
+    </div>`;
+}
+
+// Lightbox: one picture, or a set you can step through with the arrows / ← →.
+let lbList = [];
+let lbIndex = 0;
+function showLightbox(list, index) {
+  const lb = document.querySelector('#modal .lightbox');
+  if (!lb || !list.length) return;
+  lbList = list;
+  lbIndex = (index + list.length) % list.length;
+  const p = lbList[lbIndex];
+  lb.querySelector('img').src = p.full;
+  lb.querySelector('.caption').textContent = `${p.caption || ''}${lbList.length > 1 ? `  (${lbIndex + 1} / ${lbList.length})` : ''}`.trim();
+  for (const b of lb.querySelectorAll('.lb-nav')) b.hidden = lbList.length < 2;
+  lb.hidden = false;
 }
 
 function closeQuestDetails() {
   const el = document.getElementById('modal');
   el.hidden = true;
   el.innerHTML = '';
+  wikiPics = [];
 }
 
 function wireQuestDetails() {
@@ -128,18 +174,23 @@ function wireQuestDetails() {
   el.addEventListener('click', async (e) => {
     const lb = el.querySelector('.lightbox');
     if (lb && !lb.hidden) {
-      lb.hidden = true; // any click closes the enlarged picture
+      const nav = e.target.closest('[data-lb]');
+      if (nav) return showLightbox(lbList, lbIndex + Number(nav.dataset.lb));
+      lb.hidden = true; // any other click closes the enlarged picture
+      return;
+    }
+    const pic = e.target.closest('[data-pic]');
+    if (pic) return showLightbox(wikiPics, Number(pic.dataset.pic));
+    const car = e.target.closest('[data-car]');
+    if (car) {
+      const track = car.parentElement.querySelector('.car-track');
+      track.scrollBy({ left: Number(car.dataset.car) * track.clientWidth * 0.8, behavior: 'smooth' });
       return;
     }
     const zoom = e.target.closest('[data-zoom]');
-    if (zoom) {
-      lb.querySelector('img').src = zoom.dataset.zoom;
-      lb.querySelector('.caption').textContent = zoom.dataset.caption || '';
-      lb.hidden = false;
-      return;
-    }
+    if (zoom) return showLightbox([{ full: zoom.dataset.zoom, caption: zoom.dataset.caption || '' }], 0);
     if (e.target === el || e.target.closest('[data-close]')) return closeQuestDetails();
-    const link = e.target.closest('[data-task]');
+    const link = e.target.closest('a[data-task]'); // not the panel itself, which carries data-task too
     if (link) {
       e.preventDefault();
       return openQuestDetails(link.dataset.task);
@@ -152,8 +203,13 @@ function wireQuestDetails() {
     }
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' || el.hidden) return;
+    if (el.hidden) return;
     const lb = el.querySelector('.lightbox');
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && lb && !lb.hidden) {
+      e.preventDefault();
+      return showLightbox(lbList, lbIndex + (e.key === 'ArrowRight' ? 1 : -1));
+    }
+    if (e.key !== 'Escape') return;
     if (lb && !lb.hidden) lb.hidden = true;
     else closeQuestDetails();
   });
