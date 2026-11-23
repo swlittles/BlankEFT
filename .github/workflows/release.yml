@@ -1,6 +1,9 @@
 # Builds the Windows installer and publishes it to GitHub Releases when a version tag is pushed.
 # The installed app checks this Releases page and updates itself (see src/main/updater.js).
 # Cut a release with: npm run release
+#
+# The release is created as a draft first and electron-builder uploads into it. Letting
+# electron-builder create it can race and leave two releases with the same tag.
 name: Release
 
 on:
@@ -13,6 +16,8 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,15 +37,8 @@ jobs:
       - run: npm ci
       - run: npm test
 
-      - name: Build installer and publish the release
-        run: npx electron-builder --win --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Release notes from the commits since the last release
+      - name: Create the release as a draft, with notes from the commits since the last one
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           prev="$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)"
           range="${prev:+$prev..}$GITHUB_REF_NAME"
@@ -52,6 +50,11 @@ jobs:
             echo
             echo "**Already installed:** the app updates itself. It downloads new versions in the background and installs them when you restart it."
           } > notes.md
-          # (gh release edit trips over the existing tag, so set the body through the API)
-          id="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" --jq .id)"
-          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -F body=@notes.md -f name="BlankEFT $GITHUB_REF_NAME" > /dev/null
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "BlankEFT $GITHUB_REF_NAME" --notes-file notes.md
+
+      - name: Build the installer and upload it to the draft
+        run: npx electron-builder --win --publish always
+
+      - name: Publish the release
+        shell: bash
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --latest

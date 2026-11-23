@@ -69,7 +69,8 @@ function initUpdater(sendFn, beforeInstall) {
 
   ({ autoUpdater } = require('electron-updater'));
   autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true; // closing the app installs a downloaded update
+  // closing the app installs a downloaded update (never in a test run: that would launch the installer)
+  autoUpdater.autoInstallOnAppQuit = !process.env.TQM_UPDATE_TEST;
   autoUpdater.logger = null;
   autoUpdater.on('update-available', (info) => update({ state: 'downloading', latest: info.version, percent: 0 }));
   autoUpdater.on('download-progress', (p) => update({ state: 'downloading', percent: Math.round(p.percent || 0) }));
