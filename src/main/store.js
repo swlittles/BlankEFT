@@ -19,6 +19,7 @@ const DEFAULTS = {
     extractFactions: ['pmc', 'scav', 'shared'], // which extracts to show
     showLoot: false,
     showBosses: true,
+    walkPaths: false, // raid routes along walking paths instead of straight lines (src/renderer/pathing.js)
     lootCats: ['weapons', 'ammo', 'bodies'], // loot layer categories (see src/renderer/loot.js)
     questSort: 'recent', // All quests tab: 'recent' | 'oldest' | 'trader' | 'name'
   },

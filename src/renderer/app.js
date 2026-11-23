@@ -29,6 +29,10 @@ const mapView = new MapView($('#map'), {
     toast('Route now starts at that spawn');
   },
   hotspotClick: (id) => toggleHotspot(id),
+  walkReady: () => {
+    const el = document.getElementById('route-len');
+    if (el) el.innerHTML = routeLenText(currentRoute());
+  },
   floorChange: (floor) => {
     $('#floor-select').value = floor || '';
     mapView.setFloor(floor);
@@ -295,6 +299,7 @@ function renderTopbar() {
   $('#locks-toggle').classList.toggle('active', !!st.settings.showLocks);
   $('#loot-toggle').classList.toggle('active', !!st.settings.showLoot);
   $('#bosses-toggle').classList.toggle('active', !!st.settings.showBosses);
+  $('#walk-toggle').classList.toggle('active', !!st.settings.walkPaths);
   $('#pin-toggle').classList.toggle('active', !!st.settings.alwaysOnTop);
   applySidebar();
 
@@ -341,7 +346,7 @@ function renderMarkers() {
   renderLoot(map);
   mapView.setBosses(bossSpots(map), !!S.state.settings.showBosses);
   mapView.setLocks(lockEntries(S.mapId), !!S.state.settings.showLocks);
-  mapView.setRoute(S.state.settings.markerFilter === 'plan' ? currentRoute() : null);
+  mapView.setRoute(S.state.settings.markerFilter === 'plan' ? currentRoute() : null, { walk: !!S.state.settings.walkPaths });
 }
 
 // Boss spots. A few of tarkov.dev's boss zones come without coordinates (Dorms and New Gas on
@@ -818,6 +823,14 @@ function renderAll() {
 }
 
 // ------------------------------------------------------------------ raid plan tab
+/** "About N m …" for a route: the walking path's length when Walking paths is on and it's drawn. */
+function routeLenText(route) {
+  const walk = S.state.settings.walkPaths && S.state.settings.markerFilter === 'plan' ? mapView.walkMeters : null;
+  if (walk != null) return `🥾 About ${walk} m walking (${route.length} m in straight lines). Paths follow the map's roads and avoid water, fences, rocks and danger zones; inside buildings they're rough.`;
+  if (S.state.settings.walkPaths && S.state.settings.markerFilter === 'plan' && mapView.walk?.status === 'none') return `About ${route.length} m in straight lines (no walking paths on this map: it has no vector map art).`;
+  return `About ${route.length} m in straight lines. Real paths around walls and buildings will be longer.`;
+}
+
 function itemHtml(id) {
   const it = S.data.items?.[id] || { name: id };
   const img = it.iconLink ? `<img src="${escapeHtml(it.iconLink)}" alt="" loading="lazy">` : '';
@@ -884,7 +897,7 @@ function renderScavPlan(el, map, plan) {
       (s, i) => `<li data-stop="${i}"><span class="num">${i + 1}</span><div><b>${escapeHtml(s.hotspot.name)}</b><div class="small">${escapeHtml(Loot.hotspotSummary(s.hotspot))}</div></div><button class="icon-btn" data-looted="${s.id}" title="Mark as looted: drops it from the route for this raid">✓</button></li>`
     )
     .join('')}</ol>
-  ${route.stops.length ? `<p class="muted small">About ${route.length} m in straight lines. ${sp.picks ? 'Stops picked by you.' : 'Stops picked for the most loot per metre walked.'}</p>` : '<p class="muted small">No stops yet. Tick spots below, or click + badges on the map.</p>'}
+  ${route.stops.length ? `<p class="muted small"><span id="route-len">${routeLenText(route)}</span> ${sp.picks ? 'Stops picked by you.' : 'Stops picked for the most loot per metre walked.'}</p>` : '<p class="muted small">No stops yet. Tick spots below, or click + badges on the map.</p>'}
   ${route.looted.length ? `<p class="small">✓ Looted: ${route.looted.map((h) => escapeHtml(h.name)).join(', ')} <button id="scav-unloot" class="small-btn">Undo</button></p>` : ''}
   <p class="muted small">${route.startLive ? '📍 Following you: the route re-plans each time you take a screenshot.' : 'In raid, take a screenshot and the route re-plans from where you are.'}</p>
   <button id="plan-fit" class="small-btn">Show whole route</button>
@@ -953,7 +966,7 @@ function renderPlan() {
   <ol class="route">${route.stops
     .map((s, i) => `<li data-stop="${i}" title="Show on the map"><span class="num">${i + 1}</span><div class="stop-body"><b>${escapeHtml(s.task.name)}</b>${keyIcon(s.task)}<div class="small">${escapeHtml(s.objective.description)}</div></div><button class="icon-btn stop-details" data-details-task="${s.task.id}" title="Details and pictures">🖼</button></li>`)
     .join('')}</ol>
-  ${route.stops.length ? `<p class="muted small">About ${route.length} m in straight lines. Real paths around walls and buildings will be longer.</p>` : ''}
+  ${route.stops.length ? `<p class="muted small" id="route-len">${routeLenText(route)}</p>` : ''}
   <p class="muted small">${route.startLive ? '📍 Following you: the route re-plans each time you take a screenshot.' : 'In raid, take a screenshot and the route re-plans from where you are.'}</p>
   ${route.anywhere.length ? `<h4>Anywhere on this map</h4><ul class="anywhere">${route.anywhere.map((a) => `<li><b>${escapeHtml(a.task.name)}</b>${keyIcon(a.task)}: ${escapeHtml(a.objective.description)}</li>`).join('')}</ul>` : ''}
   <button id="plan-fit" class="small-btn">Show whole route</button>
@@ -1261,6 +1274,7 @@ function wire() {
   $('#locks-toggle').addEventListener('click', () => window.tqm.setSettings({ showLocks: !S.state.settings.showLocks }));
   $('#loot-toggle').addEventListener('click', () => window.tqm.setSettings({ showLoot: !S.state.settings.showLoot }));
   $('#bosses-toggle').addEventListener('click', () => window.tqm.setSettings({ showBosses: !S.state.settings.showBosses }));
+  $('#walk-toggle').addEventListener('click', () => window.tqm.setSettings({ walkPaths: !S.state.settings.walkPaths }));
   $('#loot-legend').addEventListener('change', () => {
     const cats = [...document.querySelectorAll('#loot-legend [data-loot]:checked')].map((c) => c.dataset.loot);
     S.state.settings.lootCats = cats;
@@ -1400,7 +1414,7 @@ async function onState(st) {
     else {
       renderPosition();
       // re-plan the route from where you are now
-      if (S.state.settings.markerFilter === 'plan') mapView.setRoute(currentRoute());
+      if (S.state.settings.markerFilter === 'plan') mapView.setRoute(currentRoute(), { walk: !!S.state.settings.walkPaths });
       renderPlan();
     }
   });

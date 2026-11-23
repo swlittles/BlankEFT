@@ -116,6 +116,8 @@ class MapView {
     this.floorLayer = null;
     this.svgRoot = null;
     this.lootSig = null;
+    this.walk = null; // walking-path grid for this map, built on first use
+    this.lastRoute = null;
     if (!display) return;
 
     const maxZoom = Math.max(7, display.maxZoom || 5);
@@ -174,6 +176,8 @@ class MapView {
         }
         this.svgRoot = inner;
         L.svgOverlay(outer, display.svgBounds ? getBounds(display.svgBounds) : bounds, { className: 'map-art', pane: 'art' }).addTo(map);
+        // a route drawn while the art was loading can now follow walking paths
+        if (this.lastWalk && this.lastRoute) this.setRoute(this.lastRoute, { walk: true });
       } catch (err) {
         this.handlers.error?.(`Map image failed to load: ${err.message || err}`);
       }
@@ -461,18 +465,149 @@ class MapView {
     this.refreshFloorDimming();
   }
 
+  /**
+   * Walking path through game positions, following the map art's walkable ground: { latlngs, meters },
+   * or null when it isn't ready yet (the grid builds in the background and redraws the route) or the
+   * map has no vector art (Lab, Labyrinth, Icebreaker), in which case straight lines are used.
+   */
+  walkPath(points) {
+    const W = this.walk;
+    if (!W) {
+      this.buildWalkGrid();
+      return null;
+    }
+    if (W.status !== 'ready') return null;
+    const latlngs = [];
+    let meters = 0;
+    let prevGame = null;
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = W.toCell(points[i]);
+      const b = W.toCell(points[i + 1]);
+      const key = Math.round(a.x) + ',' + Math.round(a.y) + '>' + Math.round(b.x) + ',' + Math.round(b.y);
+      let cells = W.cache.get(key);
+      if (cells === undefined) {
+        const raw = window.Pathing.findPath(W.grid, W.w, W.h, a, b);
+        cells = raw ? window.Pathing.smoothPath(W.grid, W.w, raw) : null;
+        W.cache.set(key, cells);
+      }
+      // no way through (e.g. a stop out on the water): straight line for that leg
+      const leg = cells ? cells.map((c) => W.toGame(c)) : [points[i], points[i + 1]];
+      if (cells) {
+        leg[0] = points[i];
+        leg[leg.length - 1] = points[i + 1];
+      }
+      for (const g of i === 0 ? leg : leg.slice(1)) {
+        if (prevGame) meters += Math.hypot(g.x - prevGame.x, g.z - prevGame.z);
+        prevGame = g;
+        latlngs.push(pos(g));
+      }
+    }
+    return { latlngs, meters };
+  }
+
+  /** Redraws the map's ground level in walkability colours (see pathing.js) and reads it into a grid. */
+  async buildWalkGrid() {
+    if (this.walk || !this.map || !this.display) return;
+    const map = this.map;
+    const display = this.display;
+    if (!display.svgPath) {
+      this.walk = { status: 'none' }; // tile-only map art: nothing to read
+      return;
+    }
+    if (!this.svgRoot) return; // art still loading: show() redraws the route once it's in
+    this.walk = { status: 'building' };
+    const walk = this.walk;
+    try {
+      const crs = map.options.crs;
+      const b = getBounds(display.svgBounds || display.bounds);
+      const box = L.bounds(crs.latLngToPoint(b.getNorthWest(), 0), crs.latLngToPoint(b.getSouthEast(), 0));
+      const bw = box.max.x - box.min.x;
+      const bh = box.max.y - box.min.y;
+      const game = (pt) => {
+        const ll = crs.pointToLatLng(pt, 0);
+        return { x: ll.lng, z: ll.lat };
+      };
+      const g0 = game(box.min);
+      const g1 = game(L.point(box.max.x, box.min.y));
+      const metersW = Math.hypot(g1.x - g0.x, g1.z - g0.z);
+      const CELL_M = 1.25;
+      const k = Math.min(metersW / CELL_M, 1800) / bw; // grid cells per projected unit (width capped)
+      const w = Math.max(1, Math.round(bw * k));
+      const h = Math.max(1, Math.round(bh * k));
+
+      // the ground level only, recoloured
+      const clone = this.svgRoot.cloneNode(true);
+      for (const el of clone.querySelectorAll('style')) el.remove();
+      for (const g of [...clone.children]) if (g.classList && g.classList.contains('svg-floor')) g.remove();
+      const svg = document.createElementNS(SVG_NS, 'svg');
+      svg.setAttribute('xmlns', SVG_NS);
+      svg.setAttribute('viewBox', this.svgRoot.getAttribute('viewBox'));
+      svg.setAttribute('width', String(w));
+      svg.setAttribute('height', String(h));
+      svg.setAttribute('shape-rendering', 'crispEdges');
+      const style = document.createElementNS(SVG_NS, 'style');
+      style.textContent = window.Pathing.RASTER_CSS;
+      svg.appendChild(style);
+      svg.appendChild(clone);
+      const img = new Image();
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(svg));
+      await img.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, 0, 0, w, h);
+      const grid = window.Pathing.classify(ctx.getImageData(0, 0, w, h).data, w, h);
+      if (this.walk !== walk || this.map !== map) return; // map changed meanwhile
+      Object.assign(walk, {
+        status: 'ready',
+        grid,
+        w,
+        h,
+        cellMeters: metersW / w,
+        cache: new Map(),
+        toCell: (p) => {
+          const pt = crs.latLngToPoint(L.latLng(p.z, p.x), 0);
+          return { x: ((pt.x - box.min.x) / bw) * w - 0.5, y: ((pt.y - box.min.y) / bh) * h - 0.5 };
+        },
+        toGame: (c) => game(L.point(box.min.x + ((c.x + 0.5) / w) * bw, box.min.y + ((c.y + 0.5) / h) * bh)),
+      });
+      if (this.lastWalk && this.lastRoute) {
+        this.setRoute(this.lastRoute, { walk: true });
+        if (this.handlers.walkReady) this.handlers.walkReady(this.walkMeters);
+      }
+    } catch (err) {
+      walk.status = 'none';
+      console.warn('walking-path grid failed', err);
+    }
+  }
+
   /** Planned route: start → numbered stops → extract. */
-  setRoute(route) {
+  setRoute(route, { walk = false } = {}) {
     if (!this.map) return;
+    this.lastRoute = route;
+    this.lastWalk = walk;
     this.routeLayer.clearLayers();
+    this.walkMeters = null;
     if (!route || (!route.stops.length && !route.start && !route.candidates?.length)) return;
-    const pts = [];
-    if (route.start) pts.push(pos(route.start));
-    for (const s of route.stops) pts.push(pos(s.point.position));
-    if (route.end) pts.push(pos(route.end));
+    const stops = [];
+    if (route.start) stops.push(route.start);
+    for (const s of route.stops) stops.push(s.point.position);
+    if (route.end) stops.push(route.end);
+    let pts = stops.map(pos);
+    let walked = false;
+    if (walk && stops.length > 1) {
+      const w = this.walkPath(stops);
+      if (w) {
+        pts = w.latlngs;
+        this.walkMeters = Math.round(w.meters);
+        walked = true;
+      }
+    }
     if (pts.length > 1) {
       L.polyline(pts, { className: 'route-line-shadow', weight: 7, interactive: false }).addTo(this.routeLayer);
-      L.polyline(pts, { className: 'route-line', weight: 3, dashArray: '8 7', interactive: false }).addTo(this.routeLayer);
+      L.polyline(pts, { className: walked ? 'route-line walked' : 'route-line', weight: 3, dashArray: walked ? '2 7' : '8 7', interactive: false }).addTo(this.routeLayer);
     }
     const badge = (p, text, cls, extra) => {
       const m = L.marker(pos(p), {
